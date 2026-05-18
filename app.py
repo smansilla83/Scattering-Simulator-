@@ -1533,8 +1533,12 @@ means something is wrong.
         return [puo, puc,
                 _fac4*(Vl*uo       + _W4*uc),
                 _fac4*((Vl+_ds4)*uc + _W4*uo)]
+    # Force output at r_min and 11 uniform points from 0.9*r_max to r_max.
+    # This avoids adaptive-step clustering near the endpoint that makes raw last-N-point
+    # checks unreliable: the t_eval points are uniformly spaced regardless of step size.
+    _t_eval4 = np.concatenate([[_r_min4], np.linspace(0.9 * _r_max4, _r_max4, 11)])
     _sol4 = solve_ivp(_ode4, [_r_min4, _r_max4], [0., 0., 1., 0.],
-                      method='LSODA', rtol=1e-10, atol=1e-12)
+                      method='LSODA', rtol=1e-10, atol=1e-12, t_eval=_t_eval4)
     _uo_e4 = _sol4.y[0,-1];  _puo_e4 = _sol4.y[2,-1]
     _a_vdw4 = _sol4.t[-1] - _uo_e4/_puo_e4 if abs(_puo_e4)>1e-20 else np.nan
 
@@ -1544,14 +1548,14 @@ means something is wrong.
     # Hard-wall BC
     _u_hw = abs(float(_sol4.y[0, 0]))
 
-    # Asymptotic linearity: check that a_k = r_k − u_k/u'_k is consistent across last 5 points.
-    # For a truly linear wavefunction u = N*(r − a), every estimate gives the same a.
-    _r5  = _sol4.t[-5:]
-    _u5  = _sol4.y[0, -5:]
-    _up5 = _sol4.y[2, -5:]
+    # Asymptotic linearity: a_k = r_k − u_k/u'_k should be constant for a linear wavefunction.
+    # Use the 11 uniform large-r t_eval points (indices 1..11).
+    _r5   = _sol4.t[1:]
+    _u5   = _sol4.y[0, 1:]
+    _up5  = _sol4.y[2, 1:]
     _safe_up5 = np.where(np.abs(_up5) > 1e-30, _up5, np.sign(_up5 + 1e-30) * 1e-30)
-    _a5  = _r5 - _u5 / _safe_up5
-    _le4 = float(np.std(_a5)) / a_bar_cs   # relative spread across 5 estimates (dimensionless)
+    _a5   = _r5 - _u5 / _safe_up5
+    _le4  = float(np.std(_a5)) / a_bar_cs   # relative spread (dimensionless)
 
     rows_F = ""
     rows_F += check_row("l_vdW(Cs C₆=6890) / ā_paper",
