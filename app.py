@@ -817,14 +817,42 @@ allowing exact analytic diagonalisation. The bare-channel potential matrix is:
     st.markdown("### 3. Coupled-Channel Schrödinger Equation")
     st.markdown("The radial wavefunction vector **u** = (u_open, u_closed)ᵀ satisfies:")
     st.latex(r"-\frac{\hbar^2}{2m_r}\frac{d^2\mathbf{u}}{dr^2} + \hat{V}\,\mathbf{u} = E\,\mathbf{u}")
-    st.markdown("Rearranged for numerical integration:")
+    st.markdown("Rearranged:")
     st.latex(r"\frac{d^2\mathbf{u}}{dr^2} = \frac{2m_r}{\hbar^2}\bigl(\hat{V} - E\bigr)\,\mathbf{u}")
     st.markdown("""
-This is solved numerically via **RK45** (scipy `solve_ivp`) with initial conditions
-u(0) = 0 and u′(0) = (1, 0) (pure open-channel injection).
-The scattering length is extracted from the asymptotic slope:
+#### 3a. K-matrix boundary matching (Tabs 1 & 2)
+
+Because V̂ is **uniform** inside Region I, the two dressed eigenmodes each oscillate or decay
+analytically (sin/cos for propagating, sinh/cosh for evanescent). The general interior solution is:
+
+$$\\mathbf{u}(r) = c_0\\,\\boldsymbol{\\xi}_0 f_0(r) + c_1\\,\\boldsymbol{\\xi}_1 f_1(r)$$
+
+where **ξ**ᵢ are the dressed eigenvectors and fᵢ(r) = sin(kᵢr) or sinh(κᵢr).
+The exterior solution (r > ā) is: open channel → sin(k_ext r − aδ) ≈ r − a for E → 0;
+closed channel → exp(−κ_ext r). Matching at r = ā gives the **2×2 K-matrix system**:
+
+$$M\\,\\mathbf{c} = \\begin{pmatrix}0\\\\1\\end{pmatrix}, \\quad
+M_{0i} = \\xi^{(c)}_i\\bigl[f_i'(\\bar{a}) + \\kappa_\\mathrm{ext}\\,f_i(\\bar{a})\\bigr],\\quad
+M_{1i} = \\xi^{(o)}_i\\,f_i'(\\bar{a})$$
+
+The scattering length follows from the open-channel amplitude at ā:
 """)
-    st.latex(r"a = r_\mathrm{end} - \frac{u_\mathrm{open}(r_\mathrm{end})}{u'_\mathrm{open}(r_\mathrm{end})}")
+    st.latex(r"a = \bar{a} - u_\mathrm{open}(\bar{a}), \quad \text{where } u'_\mathrm{open}(\bar{a}) = 1")
+    st.markdown("""
+Evanescent modes with κā > 500 are normalised as exp(κ(r − ā)) to prevent float64 overflow.
+
+#### 3b. LSODA ODE integration (Tab 4 — van der Waals)
+
+When the square-well is replaced by the full −C₆/r⁶ tail, the potential is no longer
+piecewise constant and analytic solutions are unavailable. The coupled ODE is integrated
+numerically from r_min (hard wall, u = 0) to r_max = 6ā using
+**scipy `solve_ivp` with method `LSODA`** (Livermore Solver for ODEs with Automatic
+Stiffness detection), which switches between Adams (non-stiff) and BDF (stiff) algorithms.
+This handles the stiffness ratio between the decaying closed channel (κ_ext ≈ nm⁻¹) and
+the slowly-varying open channel (k → 0 at E = 0) that would limit explicit methods such as RK45.
+The scattering length is extracted from the log-derivative at r_max:
+""")
+    st.latex(r"a = r_\mathrm{max} - \frac{u_\mathrm{open}(r_\mathrm{max})}{u'_\mathrm{open}(r_\mathrm{max})}")
 
     # ── 4. Diagonalisation
     st.markdown("### 4. Analytical Diagonalisation of V̂")
@@ -1516,12 +1544,14 @@ means something is wrong.
     # Hard-wall BC
     _u_hw = abs(float(_sol4.y[0, 0]))
 
-    # Asymptotic linearity
-    _r_t4   = _sol4.t[-20:]
-    _u_t4   = _sol4.y[0, -20:]
-    _c4     = np.polyfit(_r_t4, _u_t4, 1)
-    _u_rms4 = float(np.std(_u_t4)) + 1e-30
-    _le4    = float(np.max(np.abs(np.polyval(_c4, _r_t4) - _u_t4))) / _u_rms4
+    # Asymptotic linearity: check that a_k = r_k − u_k/u'_k is consistent across last 5 points.
+    # For a truly linear wavefunction u = N*(r − a), every estimate gives the same a.
+    _r5  = _sol4.t[-5:]
+    _u5  = _sol4.y[0, -5:]
+    _up5 = _sol4.y[2, -5:]
+    _safe_up5 = np.where(np.abs(_up5) > 1e-30, _up5, np.sign(_up5 + 1e-30) * 1e-30)
+    _a5  = _r5 - _u5 / _safe_up5
+    _le4 = float(np.std(_a5)) / a_bar_cs   # relative spread across 5 estimates (dimensionless)
 
     rows_F = ""
     rows_F += check_row("l_vdW(Cs C₆=6890) / ā_paper",
@@ -1531,8 +1561,8 @@ means something is wrong.
                          _u_hw, 0.0, 1e-4, "",
                          "wavefunction vanishes at hard wall r_min")
     rows_F += check_row("vdW asymptotic linearity of u_open",
-                         _le4, 0.0, 1e-2, "",
-                         "u ~ r − a for large r; relative deviation from linear fit < 1%")
+                         _le4, 0.0, 1e-4, "",
+                         "spread of a_k = r_k − u_k/u′_k across last 5 pts, relative to ā < 0.01%")
     rows_F += check_row("a_vdW(30G) vs a_paper(30G)  [%]",
                          abs(_a_vdw4 - _a_paper30) / abs(_a_paper30) * 100,
                          0.0, 5.0, "%",
@@ -1562,7 +1592,7 @@ means something is wrong.
         ("Tab1 open norm at ā",         _bc_open1   < 1e-10),
         ("Tab2 closed BC at ā",         _bc_closed2 < 1e-10),
         ("Tab2 a_km vs formula",        abs(_a_tab2_km-_a_tab2_formula)/a0_nm < 300.0),
-        ("vdW asymptotic linear",       _le4 < 1e-2),
+        ("vdW asymptotic linear",       _le4 < 1e-4),
         ("a_vdW(30G) vs paper < 5%",   abs(_a_vdw4-_a_paper30)/abs(_a_paper30)*100 < 5.0),
     ]
     n_pass = sum(v for _, v in _all_checks)
