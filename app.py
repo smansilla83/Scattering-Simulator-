@@ -10,32 +10,19 @@ st.markdown("""
 <div style="background: linear-gradient(135deg, #0d1b2a 0%, #1a0533 100%);
             border-left: 5px solid #00e5ff;
             border-radius: 10px;
-            padding: 2rem 2.5rem;
+            padding: 1.5rem 2rem;
             margin-bottom: 1.5rem;">
-  <h1 style="color:#ffffff; margin:0 0 0.5rem 0; font-size:2rem;">
+  <h1 style="color:#ffffff; margin:0 0 1rem 0; font-size:2rem;">
     Region I — Eigenvector Simulator
   </h1>
-  <p style="color:#b0bec5; font-size:1.05rem; margin:0 0 1rem 0; max-width:860px;">
-    Inside the interaction region (<span style="color:#00e5ff;">r &lt; ā</span>), the two-channel
-    Hamiltonian couples an <span style="color:#ff6ec7;">electron state |e⟩</span> and a
-    <span style="color:#69ff47;">cavity state |c⟩</span> through the off-diagonal coupling
-    <span style="color:#ffd740;">ℏΩ</span>.
-    Because the potential matrix <b style="color:#ffffff;">V̂</b> is <em>constant</em> in this region,
-    it is diagonalised once via a mixing angle <span style="color:#ce93d8;">θ</span>,
-    yielding <b style="color:#00e5ff;">dressed eigenstates</b> |+⟩ and |−⟩ that decouple the
-    radial equations. The full Hamiltonian then assigns each dressed channel its own
-    wavenumber <span style="color:#ffd740;">k±</span>, which depends on the total energy E and
-    the reduced mass m<sub>r</sub>.
-  </p>
-  <p style="color:#b0bec5; font-size:0.92rem; margin:0;">
-    <b style="color:#ffd740;">Parameter note:</b>
-    The <em>eigenvectors</em> (mixing angle θ) depend only on
-    <span style="color:#ff6ec7;">ΔV = (Ve−Vc)/2</span> and <span style="color:#ffd740;">ℏΩ</span>
-    — the common offset −(Ve+Vc)/2 shifts both eigenvalues equally and cannot affect the
-    eigenvectors. The <em>wavenumbers</em> k± additionally require E and m<sub>r</sub>.
-    So Ve and Vc are <b style="color:#ffffff;">not independently observable</b> from θ alone —
-    only their difference ΔV matters there.
-  </p>
+  <div style="display:flex; gap:1.5rem; flex-wrap:wrap;">
+    <span style="color:#00e5ff;">⟐ Diagonalise V̂ → dressed states |+⟩ and |−⟩</span>
+    <span style="color:#ce93d8;">⟐ Compute mixing angle θ</span>
+    <span style="color:#69ff47;">⟐ Get eigenvalues λ±</span>
+    <span style="color:#ffd740;">⟐ Compute wavenumbers k± for the full Hamiltonian</span>
+    <span style="color:#ff6ec7;">⟐ Identify propagating vs evanescent channels</span>
+    <span style="color:#aaaaff;">⟐ Visualise the Bloch-plane geometry</span>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
