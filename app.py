@@ -1803,6 +1803,42 @@ with tab6:
 
     _Vo6 = brentq(lambda V: _abg6(V, a_bar_cs)-a_bg, _Vp6*1.001, _Vp6*5.0)
 
+    # ── Presets ────────────────────────────────────────────────────────────────
+    st.markdown("**Presets**")
+    _pr1, _pr2, _pr3, _pr4 = st.columns(4)
+    with _pr1:
+        if st.button("Single resonance", key="6_pre1",
+                     help="Channel 3 nearly decoupled — gives a clear 2-channel-like Feshbach pole in the δ₂ sweep"):
+            st.session_state["6_W12"] = 12.0
+            st.session_state["6_W13"] = 0.5
+            st.session_state["6_W23"] = 0.5
+            st.session_state["6_d2"]  = 5.0
+            st.session_state["6_d3"]  = 60.0
+            st.rerun()
+    with _pr2:
+        if st.button("Two resonances", key="6_pre2",
+                     help="Both closed channels strongly coupled — expect two poles in the δ₂ sweep"):
+            st.session_state["6_W12"] = 10.0
+            st.session_state["6_W13"] = 10.0
+            st.session_state["6_W23"] = 5.0
+            st.session_state["6_d2"]  = 5.0
+            st.session_state["6_d3"]  = 20.0
+            st.rerun()
+    with _pr3:
+        if st.button("Broad coupling", key="6_pre3",
+                     help="Maximum couplings — widest resonances, most mixing between channels"):
+            st.session_state["6_W12"] = 15.0
+            st.session_state["6_W13"] = 15.0
+            st.session_state["6_W23"] = 10.0
+            st.session_state["6_d2"]  = 5.0
+            st.session_state["6_d3"]  = 15.0
+            st.rerun()
+    with _pr4:
+        if st.button("Reset defaults", key="6_pre_reset"):
+            for _k6 in ["6_V1", "6_ab", "6_d2", "6_d3", "6_W12", "6_W13", "6_W23"]:
+                st.session_state.pop(_k6, None)
+            st.rerun()
+
     # ── Sliders ────────────────────────────────────────────────────────────────
     _ca6, _cb6, _cc6 = st.columns(3)
     with _ca6:
