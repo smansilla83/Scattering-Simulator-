@@ -39,12 +39,9 @@ V_matrix = np.array([
 ])
 evals_np, evecs_np = np.linalg.eigh(V_matrix)
 
-# ── Layout ─────────────────────────────────────────────────────────────────────
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("Analytical results")
-    st.markdown(f"""
+# ── Analytical results ─────────────────────────────────────────────────────────
+st.subheader("Analytical results")
+st.markdown(f"""
 | Quantity | Value |
 |---|---|
 | $\\Delta_V = (V_e - V_c)/2$ | **{Delta_V:.4f} eV** |
@@ -55,104 +52,106 @@ with col1:
 | $\\lambda_-$ | **{lam_minus:.4f} eV** |
 """)
 
-    st.subheader("Eigenvectors")
-    st.latex(
-        rf"|{{+}}\rangle = \cos\theta\,|e\rangle + \sin\theta\,|c\rangle"
-        rf" = {cos_t:+.4f}\,|e\rangle {sin_t:+.4f}\,|c\rangle"
-    )
-    st.latex(
-        rf"|{{-}}\rangle = -\sin\theta\,|e\rangle + \cos\theta\,|c\rangle"
-        rf" = {-sin_t:+.4f}\,|e\rangle {cos_t:+.4f}\,|c\rangle"
-    )
+st.subheader("Eigenvectors")
+st.latex(
+    rf"|{{+}}\rangle = \cos\theta\,|e\rangle + \sin\theta\,|c\rangle"
+    rf" = {cos_t:+.4f}\,|e\rangle {sin_t:+.4f}\,|c\rangle"
+)
+st.latex(
+    rf"|{{-}}\rangle = -\sin\theta\,|e\rangle + \cos\theta\,|c\rangle"
+    rf" = {-sin_t:+.4f}\,|e\rangle {cos_t:+.4f}\,|c\rangle"
+)
 
-    st.subheader("NumPy verification")
-    st.markdown(f"""
+st.subheader("NumPy verification")
+st.markdown(f"""
 | State | $|e\\rangle$ | $|c\\rangle$ | Eigenvalue |
 |---|---|---|---|
 | $\\lambda_-$ | `{evecs_np[0,0]:+.4f}` | `{evecs_np[1,0]:+.4f}` | `{evals_np[0]:.4f} eV` |
 | $\\lambda_+$ | `{evecs_np[0,1]:+.4f}` | `{evecs_np[1,1]:+.4f}` | `{evals_np[1]:.4f} eV` |
 """)
 
-with col2:
-    st.subheader("Bloch-plane view of the traceless part")
+st.divider()
 
-    fig, axes = plt.subplots(1, 2, figsize=(18, 9))
-    fig.patch.set_facecolor("#0e1117")
+# ── Bloch-plane plots (full width) ─────────────────────────────────────────────
+st.subheader("Bloch-plane view of the traceless part")
 
-    for ax in axes:
-        ax.set_facecolor("#0e1117")
-        ax.tick_params(colors="white")
-        ax.xaxis.label.set_color("white")
-        ax.yaxis.label.set_color("white")
-        ax.title.set_color("white")
-        for spine in ax.spines.values():
-            spine.set_edgecolor("#444")
+fig, axes = plt.subplots(1, 2, figsize=(18, 9))
+fig.patch.set_facecolor("#0e1117")
 
-    # Left: (σ_z, σ_x) vector diagram
-    ax = axes[0]
-    ax.set_title(r"$(\sigma_z,\,\sigma_x)$ plane", color="white")
-    ax.set_xlabel(r"$\Delta_V$  ($\sigma_z$ component)", color="white")
-    ax.set_ylabel(r"$\hbar\Omega$  ($\sigma_x$ component)", color="white")
-    ax.set_aspect("equal")
-    lim = max(R * 1.5, 0.5)
-    ax.set_xlim(-lim, lim)
-    ax.set_ylim(-lim * 0.2, lim * 1.4)
-    ax.axhline(0, color="#444", lw=0.8)
-    ax.axvline(0, color="#444", lw=0.8)
+for ax in axes:
+    ax.set_facecolor("#0e1117")
+    ax.tick_params(colors="white")
+    ax.xaxis.label.set_color("white")
+    ax.yaxis.label.set_color("white")
+    ax.title.set_color("white")
+    for spine in ax.spines.values():
+        spine.set_edgecolor("#444")
 
-    ax.annotate("", xy=(Delta_V, hOmega), xytext=(0, 0),
-                arrowprops=dict(arrowstyle="->", color="#4fc3f7", lw=2))
-    ax.text(Delta_V * 0.45 + lim * 0.04, hOmega * 0.55,
-            r"$\vec{n}$, $R$", color="#4fc3f7", fontsize=11)
+# Left: (σ_z, σ_x) vector diagram
+ax = axes[0]
+ax.set_title(r"$(\sigma_z,\,\sigma_x)$ plane", color="white")
+ax.set_xlabel(r"$\Delta_V$  ($\sigma_z$ component)", color="white")
+ax.set_ylabel(r"$\hbar\Omega$  ($\sigma_x$ component)", color="white")
+ax.set_aspect("equal")
+lim = max(R * 1.5, 0.5)
+ax.set_xlim(-lim, lim)
+ax.set_ylim(-lim * 0.2, lim * 1.4)
+ax.axhline(0, color="#444", lw=0.8)
+ax.axvline(0, color="#444", lw=0.8)
 
-    arc_r = R * 0.3
-    arc = mpatches.Arc((0, 0), 2 * arc_r, 2 * arc_r,
-                       angle=0, theta1=0, theta2=np.degrees(two_theta),
-                       color="#ffb74d", lw=1.5)
-    ax.add_patch(arc)
-    mid = two_theta / 2
-    ax.text(arc_r * 1.3 * np.cos(mid), arc_r * 1.3 * np.sin(mid),
-            r"$2\theta$", color="#ffb74d", fontsize=10)
+ax.annotate("", xy=(Delta_V, hOmega), xytext=(0, 0),
+            arrowprops=dict(arrowstyle="->", color="#4fc3f7", lw=2))
+ax.text(Delta_V * 0.45 + lim * 0.04, hOmega * 0.55,
+        r"$\vec{n}$, $R$", color="#4fc3f7", fontsize=11)
 
-    ax.plot([0, Delta_V], [0, 0], color="#ef9a9a", lw=1.4, ls="--")
-    ax.plot([Delta_V, Delta_V], [0, hOmega], color="#a5d6a7", lw=1.4, ls="--")
-    ax.text(Delta_V / 2, -lim * 0.1, r"$\Delta_V$",
-            color="#ef9a9a", ha="center", fontsize=10)
-    ax.text(Delta_V + lim * 0.07, hOmega / 2, r"$\hbar\Omega$",
-            color="#a5d6a7", fontsize=10)
+arc_r = R * 0.3
+arc = mpatches.Arc((0, 0), 2 * arc_r, 2 * arc_r,
+                   angle=0, theta1=0, theta2=np.degrees(two_theta),
+                   color="#ffb74d", lw=1.5)
+ax.add_patch(arc)
+mid = two_theta / 2
+ax.text(arc_r * 1.3 * np.cos(mid), arc_r * 1.3 * np.sin(mid),
+        r"$2\theta$", color="#ffb74d", fontsize=10)
 
-    # Right: unit circle with |+⟩ and |−⟩
-    ax2 = axes[1]
-    ax2.set_title("Dressed states on the unit circle", color="white")
-    ax2.set_xlabel(r"$|e\rangle$ component", color="white")
-    ax2.set_ylabel(r"$|c\rangle$ component", color="white")
-    ax2.set_aspect("equal")
-    ax2.set_xlim(-1.5, 1.5)
-    ax2.set_ylim(-1.5, 1.5)
-    ax2.add_patch(plt.Circle((0, 0), 1, color="#444", fill=False, lw=1))
-    ax2.axhline(0, color="#444", lw=0.8)
-    ax2.axvline(0, color="#444", lw=0.8)
+ax.plot([0, Delta_V], [0, 0], color="#ef9a9a", lw=1.4, ls="--")
+ax.plot([Delta_V, Delta_V], [0, hOmega], color="#a5d6a7", lw=1.4, ls="--")
+ax.text(Delta_V / 2, -lim * 0.1, r"$\Delta_V$",
+        color="#ef9a9a", ha="center", fontsize=10)
+ax.text(Delta_V + lim * 0.07, hOmega / 2, r"$\hbar\Omega$",
+        color="#a5d6a7", fontsize=10)
 
-    ax2.annotate("", xy=(cos_t, sin_t), xytext=(0, 0),
-                 arrowprops=dict(arrowstyle="->", color="#4fc3f7", lw=2))
-    ax2.text(cos_t * 1.15, sin_t * 1.15, r"$|{+}\rangle$",
-             color="#4fc3f7", fontsize=12, ha="center", va="center")
+# Right: unit circle with |+⟩ and |−⟩
+ax2 = axes[1]
+ax2.set_title("Dressed states on the unit circle", color="white")
+ax2.set_xlabel(r"$|e\rangle$ component", color="white")
+ax2.set_ylabel(r"$|c\rangle$ component", color="white")
+ax2.set_aspect("equal")
+ax2.set_xlim(-1.5, 1.5)
+ax2.set_ylim(-1.5, 1.5)
+ax2.add_patch(plt.Circle((0, 0), 1, color="#444", fill=False, lw=1))
+ax2.axhline(0, color="#444", lw=0.8)
+ax2.axvline(0, color="#444", lw=0.8)
 
-    ax2.annotate("", xy=(-sin_t, cos_t), xytext=(0, 0),
-                 arrowprops=dict(arrowstyle="->", color="#ffb74d", lw=2))
-    ax2.text(-sin_t * 1.2, cos_t * 1.2, r"$|{-}\rangle$",
-             color="#ffb74d", fontsize=12, ha="center", va="center")
+ax2.annotate("", xy=(cos_t, sin_t), xytext=(0, 0),
+             arrowprops=dict(arrowstyle="->", color="#4fc3f7", lw=2))
+ax2.text(cos_t * 1.15, sin_t * 1.15, r"$|{+}\rangle$",
+         color="#4fc3f7", fontsize=12, ha="center", va="center")
 
-    arc2 = mpatches.Arc((0, 0), 0.5, 0.5, angle=0,
-                        theta1=0, theta2=np.degrees(theta),
-                        color="#ce93d8", lw=1.5)
-    ax2.add_patch(arc2)
-    ax2.text(0.35 * np.cos(theta / 2), 0.35 * np.sin(theta / 2) + 0.05,
-             r"$\theta$", color="#ce93d8", fontsize=10)
+ax2.annotate("", xy=(-sin_t, cos_t), xytext=(0, 0),
+             arrowprops=dict(arrowstyle="->", color="#ffb74d", lw=2))
+ax2.text(-sin_t * 1.2, cos_t * 1.2, r"$|{-}\rangle$",
+         color="#ffb74d", fontsize=12, ha="center", va="center")
 
-    fig.tight_layout()
-    st.pyplot(fig, use_container_width=True)
-    plt.close(fig)
+arc2 = mpatches.Arc((0, 0), 0.5, 0.5, angle=0,
+                    theta1=0, theta2=np.degrees(theta),
+                    color="#ce93d8", lw=1.5)
+ax2.add_patch(arc2)
+ax2.text(0.35 * np.cos(theta / 2), 0.35 * np.sin(theta / 2) + 0.05,
+         r"$\theta$", color="#ce93d8", fontsize=10)
+
+fig.tight_layout()
+st.pyplot(fig, use_container_width=True)
+plt.close(fig)
 
 # ── Energy level diagram ───────────────────────────────────────────────────────
 st.subheader("Eigenvalue spectrum")
