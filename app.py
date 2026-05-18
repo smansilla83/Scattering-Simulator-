@@ -1224,10 +1224,21 @@ W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
         # 2-channel ODE (open + s-wave closed), matching the paper's 2-channel model.
         # Sweep starts at -15 G so the s-wave resonance at B0 = -11.1 G is visible.
         # Fine B-grid near B0_s and B*_s to resolve the pole and zero-crossing.
-        B_coarse = np.linspace(-15.0, 62.0, n_B_key + 40)
-        B_fine_pole = np.linspace(TABLE['s-wave']['B0'] - 0.8, TABLE['s-wave']['B0'] + 0.8, 120)
-        B_fine_zero = np.linspace(TABLE['s-wave']['Bstar'] - 0.8, TABLE['s-wave']['Bstar'] + 0.8, 60)
-        B_sw = np.sort(np.unique(np.concatenate([B_coarse, B_fine_pole, B_fine_zero])))
+        _B0 = TABLE['s-wave']['B0']
+        B_coarse      = np.linspace(-15.0, 62.0, n_B_key + 40)
+        B_fine_pole   = np.linspace(_B0 - 0.8,   _B0 + 0.8,   80)
+        B_near_pole   = np.concatenate([
+            np.linspace(_B0 - 0.05,  _B0 - 0.002, 40),
+            np.linspace(_B0 + 0.002, _B0 + 0.05,  40),
+        ])
+        B_very_fine   = np.concatenate([
+            np.linspace(_B0 - 0.002, _B0 - 5e-5,  50),
+            np.linspace(_B0 + 5e-5,  _B0 + 0.002, 50),
+        ])
+        B_fine_zero   = np.linspace(TABLE['s-wave']['Bstar'] - 0.8,
+                                    TABLE['s-wave']['Bstar'] + 0.8, 60)
+        B_sw = np.sort(np.unique(np.concatenate(
+            [B_coarse, B_fine_pole, B_near_pole, B_very_fine, B_fine_zero])))
         B_sw = B_sw[(B_sw >= -15.0) & (B_sw <= 62.0)]
 
         a_sw   = np.full(len(B_sw), np.nan)
@@ -1272,12 +1283,15 @@ W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
     for sp in ax_cmp.spines.values(): sp.set_edgecolor("#333")
 
     clip = 8000
-    ax_cmp.plot(B_vdw, np.clip(a_paper_coarse / a0_nm, -clip, clip),
+    def _nan_clip(arr, c):
+        return np.where(np.abs(arr) > c, np.nan, arr)
+
+    ax_cmp.plot(B_vdw, _nan_clip(a_paper_coarse / a0_nm, clip),
                 color="#00e5ff", lw=2,
                 label="Lange et al. product formula — all 3 resonances (validated)")
     _W_label = (f"fitted (pole at B₀)" if (_use_fitted_W and _W_fit_v is not None)
                 else f"α={_W_alpha_v:.1f}×W_Γ")
-    ax_cmp.plot(B_vdw, np.clip(a_vdw_arr / a0_nm, -clip, clip),
+    ax_cmp.plot(B_vdw, _nan_clip(a_vdw_arr / a0_nm, clip),
                 color="#ff6ec7", lw=2, ls="--", marker="o", ms=3,
                 label=f"vdW ODE — s-wave 2-ch (C₆={C6_au} au, r_min={r_min_a0} a₀, W: {_W_label})")
     ax_cmp.axhline(0, color="#555", lw=0.8, ls="--")
