@@ -91,7 +91,7 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "⟐ Theory & Assumptions",
     "⟐ van der Waals Extension",
     "⟐ Verification",
-    "⟐ Three-Channel Spin Model",
+    "⟐ Three-Channel Models",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1792,7 +1792,8 @@ means something is wrong.
 
 # ── Tab 6: Three-Channel Spin Model ────────────────────────────────────────────
 with tab6:
-    st.markdown("## Three-Channel Spin Model")
+    st.markdown("<h2 style='color:#00e5ff;'>Three-channel toy spin model</h2>",
+                unsafe_allow_html=True)
     st.markdown(
         "Generalises the two-channel Feshbach model to **three coupled spin states** "
         "|1⟩ (open), |2⟩, |3⟩ (closed). A 3×3 symmetric potential matrix couples "
@@ -1800,6 +1801,14 @@ with tab6:
         "of the closed channels. Scattering length via analytic dressed-state boundary "
         "matching (E=0); wavefunctions from a numerical ODE."
     )
+    st.markdown("""
+<div style="background:#1a1a2e; border-left:4px solid #ffd740; border-radius:6px;
+            padding:0.6rem 1rem; font-size:0.85rem; color:#b0bec5; margin-bottom:0.8rem;">
+  <b style="color:#ffd740;">Toy model — detunings are free parameters.</b>
+  This model shows dressed-state mixing among three coupled channels. The scattering-length
+  curve is illustrative unless the detunings and couplings are fitted to specific resonance
+  poles. For a calibrated s-wave resonance placed at B₀ = −11.1 G, see the section below.
+</div>""", unsafe_allow_html=True)
 
     # ── Local constants ────────────────────────────────────────────────────────
     # F = m_r_me/hbar2_2me = 2mᵣ/ħ²  (since hbar2_2me = ħ²/(2mₑ))
@@ -2031,3 +2040,119 @@ with tab6:
         )
     except Exception as _exc6:
         st.warning(f"K-matrix solve failed: {_exc6}")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Calibrated two-channel s-wave resonance
+    # ═══════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("<h2 style='color:#69ff47;'>Calibrated two-channel s-wave resonance</h2>",
+                unsafe_allow_html=True)
+    st.markdown("""
+<p style="color:#b0bec5;">
+The toy model above uses arbitrary detunings. Here we map to physical magnetic field:
+δ(B) = δμ · μ<sub>B</sub> · (B − B<sub>c</sub>), then fit the coupling W so that
+the vdW ODE produces a scattering-length pole at the experimental
+B₀ = −11.1 G of the s-wave resonance. The d-wave and g-wave resonances require
+additional closed channels and do not appear in this two-channel model.
+</p>
+""", unsafe_allow_html=True)
+
+    # Fixed calibration parameters matching Tab 4 defaults
+    _C6_eV_6s  = 6890 * 27.2114 * a0_nm**6
+    _r_min_6s  = 20.0 * a0_nm
+    _r_max_6s  = 6.0  * a_bar_cs
+    _W_gamma_6s = np.sqrt(TABLE['s-wave']['Gamma'] * 1e6 * h_eVs * hbar2_2mr / a_bar_cs**2)
+
+    with st.spinner("Fitting W to s-wave pole at B₀ = −11.1 G …"):
+        _W_fit_6s, _ = fit_W_vdw_to_pole(_C6_eV_6s, _r_min_6s, _r_max_6s)
+
+    if _W_fit_6s is not None:
+        st.markdown(f"""
+<div style="background:#1a1a2e; border-left:4px solid #69ff47; border-radius:6px;
+            padding:0.5rem 1rem; font-size:0.85rem; color:#b0bec5; margin-bottom:0.8rem;">
+  Fitted W = <b style="color:#69ff47;">{_W_fit_6s*1e9:.2f} neV</b>
+  ({_W_fit_6s/_W_gamma_6s:.2f} × W_Γ) — places the vdW ODE pole at
+  <b style="color:#ffd740;">B₀ = −11.1 G</b>.<br>
+  <span style="color:#888; font-size:0.82rem;">Calibrated demonstration, not a
+  first-principles prediction of W. Width (B*) is not constrained by this fit.</span>
+</div>""", unsafe_allow_html=True)
+
+        @st.cache_data(show_spinner=False)
+        def _sw6_sweep(C6_key, r_min_key, r_max_key, W_key):
+            _B0 = TABLE['s-wave']['B0']
+            B_coarse = np.linspace(-15.0, 22.0, 100)
+            B_fine   = np.concatenate([
+                np.linspace(_B0 - 0.3, _B0 - 0.002, 80),
+                np.linspace(_B0 + 0.002, _B0 + 0.3, 80),
+            ])
+            B_arr = np.sort(np.unique(np.concatenate([B_coarse, B_fine])))
+            a_arr = np.full(len(B_arr), np.nan)
+            fac   = m_r_me / hbar2_2me
+            for i, B in enumerate(B_arr):
+                ds = TABLE['s-wave']['dmu'] * muB_eVperG * (B - TABLE['s-wave']['Bc'])
+                def _od(r, y, ds=ds):
+                    uo, uc, puo, puc = y
+                    Vl = -C6_key / r**6
+                    return [puo, puc,
+                            fac*(Vl*uo + W_key*uc),
+                            fac*((Vl+ds)*uc + W_key*uo)]
+                try:
+                    sol = solve_ivp(_od, [r_min_key, r_max_key], [0., 0., 1., 0.],
+                                    method='LSODA', rtol=1e-9, atol=1e-11)
+                    if sol.success:
+                        uo_e, puo_e = sol.y[0, -1], sol.y[2, -1]
+                        if abs(puo_e) > 1e-20:
+                            a_arr[i] = sol.t[-1] - uo_e / puo_e
+                except Exception:
+                    pass
+            return B_arr, a_arr
+
+        with st.spinner("Computing s-wave a(B) …"):
+            _B6s, _a6s = _sw6_sweep(_C6_eV_6s, _r_min_6s, _r_max_6s, float(_W_fit_6s))
+
+        _clip6s     = 8000.0
+        _a_paper6s  = a_of_B_paper(_B6s)
+        _B0_6s      = TABLE['s-wave']['B0']
+        _Bs_6s      = TABLE['s-wave']['Bstar']
+
+        fig_6s, ax_6s = plt.subplots(figsize=(10, 4))
+        fig_6s.patch.set_facecolor("#0e1117"); ax_6s.set_facecolor("#0e1117")
+        ax_6s.tick_params(colors="white", labelsize=10)
+        ax_6s.xaxis.label.set_color("white"); ax_6s.yaxis.label.set_color("white")
+        for _sp6 in ax_6s.spines.values(): _sp6.set_edgecolor("#333")
+
+        ax_6s.plot(_B6s, np.clip(_a_paper6s / a0_nm, -_clip6s, _clip6s),
+                   color="#00e5ff", lw=2, label="Lange et al. product formula (all 3 resonances)")
+        ax_6s.plot(_B6s, np.clip(_a6s / a0_nm, -_clip6s, _clip6s),
+                   color="#69ff47", lw=2, label="vdW ODE — calibrated s-wave (fitted W)")
+        ax_6s.axvline(_B0_6s, color="#ffd740", lw=1.5, ls="--",
+                      label=f"B₀ = {_B0_6s} G  (s-wave pole)")
+        ax_6s.axvline(_Bs_6s, color="#ff6ec7", lw=1.0, ls=":",
+                      label=f"B* = {_Bs_6s} G  (paper zero-crossing)")
+        ax_6s.axhline(0, color="#555", lw=0.8)
+        ax_6s.axhline(a_bg / a0_nm, color="#888", lw=0.8, ls="--",
+                      label=f"a_bg = {a_bg/a0_nm:.0f} a₀")
+        ax_6s.set_xlim(-15, 22)
+        ax_6s.set_ylim(-_clip6s, _clip6s)
+        ax_6s.set_xlabel("Magnetic field B (G)", fontsize=11)
+        ax_6s.set_ylabel("a  (a₀)", fontsize=11)
+        ax_6s.set_title("Calibrated s-wave resonance: vdW ODE (green) vs Lange et al. (cyan)",
+                        color="white", fontsize=12)
+        ax_6s.legend(fontsize=9, framealpha=0.2, labelcolor="white",
+                     facecolor="#0e1117", edgecolor="#444")
+        fig_6s.tight_layout()
+        st.pyplot(fig_6s, use_container_width=True)
+        plt.close(fig_6s)
+
+        st.markdown("""
+<div style="background:#1a1a2e; border-left:4px solid #555; border-radius:6px;
+            padding:0.5rem 1rem; font-size:0.82rem; color:#b0bec5; margin-top:0.5rem;">
+  The green curve shares the s-wave pole at B₀ = −11.1 G with the cyan paper formula,
+  confirming the calibration. The resonance width and B* zero-crossing differ because
+  r_min is not also fitted. The d-wave (47.78 G) and g-wave (53.45 G) poles visible in
+  the cyan curve require additional closed channels and are absent here.
+</div>""", unsafe_allow_html=True)
+
+    else:
+        st.warning("Pole fitting did not converge for default parameters "
+                   "(C₆ = 6890 au, r_min = 20 a₀).")
