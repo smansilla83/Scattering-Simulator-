@@ -76,7 +76,7 @@ with col1:
 with col2:
     st.subheader("Bloch-plane view of the traceless part")
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(18, 9))
     fig.patch.set_facecolor("#0e1117")
 
     for ax in axes:
@@ -151,7 +151,7 @@ with col2:
              r"$\theta$", color="#ce93d8", fontsize=10)
 
     fig.tight_layout()
-    st.pyplot(fig)
+    st.pyplot(fig, use_container_width=True)
     plt.close(fig)
 
 # ── Energy level diagram ───────────────────────────────────────────────────────
