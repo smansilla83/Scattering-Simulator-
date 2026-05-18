@@ -85,12 +85,13 @@ st.sidebar.markdown(f"""
 B_probe = st.sidebar.slider("B (G) — probe field", 20.0, 62.0, 30.0, 0.1)
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "⟐ Interactive Simulator",
     "⟐ Paper Results (Lange et al.)",
     "⟐ Theory & Assumptions",
     "⟐ van der Waals Extension",
     "⟐ Verification",
+    "⟐ Three-Channel Spin Model",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1466,3 +1467,245 @@ means something is wrong.
   </div>
 </div>
 """, unsafe_allow_html=True)
+
+# ── Tab 6: Three-Channel Spin Model ────────────────────────────────────────────
+with tab6:
+    st.markdown("## Three-Channel Spin Model")
+    st.markdown(
+        "Generalises the two-channel Feshbach model to **three coupled spin states** "
+        "|1⟩ (open), |2⟩, |3⟩ (closed). A 3×3 symmetric potential matrix couples "
+        "all pairs via W₁₂, W₁₃, W₂₃; detunings δ₂, δ₃ set the asymptotic energies "
+        "of the closed channels. Scattering length via analytic dressed-state boundary "
+        "matching (E=0); wavefunctions from a numerical ODE."
+    )
+
+    # ── Local constants ────────────────────────────────────────────────────────
+    # F = m_r_me/hbar2_2me = 2mᵣ/ħ²  (since hbar2_2me = ħ²/(2mₑ))
+    # Schrödinger: u'' = F·V·u  →  k² = F·|V|  inside the well
+    _F6  = m_r_me / hbar2_2me                                      # 2mᵣ/ħ²  eV⁻¹ nm⁻²
+    _Vp6 = (np.pi/2)**2 * hbar2_2me / (m_r_me*a_bar_cs**2)        # first-pole energy ≈ 30 neV
+
+    def _abg6(V, ab):
+        k = np.sqrt(m_r_me*V/hbar2_2me); ka = k*ab
+        return np.inf if abs(np.cos(ka)) < 1e-12 else ab*(1-np.tan(ka)/ka)
+
+    _Vo6 = brentq(lambda V: _abg6(V, a_bar_cs)-a_bg, _Vp6*1.001, _Vp6*5.0)
+
+    # ── Sliders ────────────────────────────────────────────────────────────────
+    _ca6, _cb6, _cc6 = st.columns(3)
+    with _ca6:
+        st.markdown("**Well**")
+        _V1n6 = st.slider("V₁  (neV)", -150.0, -0.1, -float(_Vo6*1e9), 0.5, key="6_V1")
+        _V1_6 = _V1n6 * 1e-9
+        _abn6 = st.slider("ā  (a₀)", 50.0, 200.0, 95.7, 1.0, key="6_ab")
+        _ab6  = _abn6 * a0_nm
+    with _cb6:
+        st.markdown("**Detunings**")
+        _d2n6 = st.slider("δ₂  (neV)", 0.5, 60.0,  5.0, 0.5, key="6_d2")
+        _d3n6 = st.slider("δ₃  (neV)", 0.5, 60.0, 20.0, 0.5, key="6_d3")
+        _d2_6 = _d2n6*1e-9;  _d3_6 = _d3n6*1e-9
+    with _cc6:
+        st.markdown("**Couplings**")
+        _W12n6 = st.slider("W₁₂  (neV)", 0.0, 15.0, 1.0, 0.1, key="6_W12")
+        _W13n6 = st.slider("W₁₃  (neV)", 0.0, 15.0, 1.0, 0.1, key="6_W13")
+        _W23n6 = st.slider("W₂₃  (neV)", 0.0, 15.0, 0.5, 0.1, key="6_W23")
+        _W12_6 = _W12n6*1e-9;  _W13_6 = _W13n6*1e-9;  _W23_6 = _W23n6*1e-9
+
+    # ── Potential matrix & diagonalisation ─────────────────────────────────────
+    _Vm6 = np.array([
+        [_V1_6,          _W12_6,         _W13_6        ],
+        [_W12_6,         _V1_6 + _d2_6,  _W23_6        ],
+        [_W13_6,         _W23_6,         _V1_6 + _d3_6 ],
+    ])
+    _ev6, _ec6 = np.linalg.eigh(_Vm6)   # columns of _ec6 are eigenvectors
+
+    # ── Analytic scattering length: dressed-state boundary matching (E=0) ──────
+    # Derive: inside well, u = Σᵢ αᵢ |vᵢ⟩ sin(kᵢr). Match at r=ā:
+    #   closed ch.j:  Σᵢ αᵢ ec[j,i](kᵢ cos kᵢā + κⱼ sin kᵢā) = 0
+    #   open ch. norm: Σᵢ αᵢ ec[0,i] kᵢ cos kᵢā = 1
+    # Then  a = ā − Σᵢ αᵢ ec[0,i] sin kᵢā
+    def _a3ch6(Vm, d2, d3, ab, F):
+        ev, ec = np.linalg.eigh(Vm)
+        ks = np.where(ev < 0,
+                      np.sqrt(F*np.abs(ev)),
+                      1j*np.sqrt(F*np.maximum(ev, 0.0)))
+        kp1, kp2 = np.sqrt(F*d2), np.sqrt(F*d3)
+        M = np.zeros((3, 3), dtype=complex)
+        for i in range(3):
+            ki = ks[i]; sa = np.sin(ki*ab); ca = np.cos(ki*ab)
+            M[0, i] = ec[1, i] * (ki*ca + kp1*sa)
+            M[1, i] = ec[2, i] * (ki*ca + kp2*sa)
+            M[2, i] = ec[0, i] * ki*ca
+        try:
+            al = np.linalg.solve(M, np.array([0.0, 0.0, 1.0], dtype=complex))
+            u0 = float(np.sum(al * ec[0, :] * np.sin(ks*ab)).real)
+            return float(ab - u0)
+        except np.linalg.LinAlgError:
+            return np.nan
+
+    _a6_cur = _a3ch6(_Vm6, _d2_6, _d3_6, _ab6, _F6)
+
+    # ── Metric strip ───────────────────────────────────────────────────────────
+    _mc6 = st.columns(4)
+    _mc6[0].metric("Scattering length a",
+                   f"{_a6_cur/a0_nm:.1f} a₀" if np.isfinite(_a6_cur) else "diverges")
+    for _ji in range(3):
+        _mc6[_ji+1].metric(f"λ{_ji+1}  (neV)", f"{_ev6[_ji]*1e9:.3f}")
+
+    st.markdown("---")
+
+    # ── Three panels: V̂ heatmap | eigenvalues | Bloch triangle ────────────────
+    _p6m, _p6e, _p6t = st.columns(3)
+    _c6  = ["#69ff47", "#ffd740", "#ff6ec7"]
+    _SQ3 = np.sqrt(3)/2
+
+    with _p6m:
+        st.markdown("**Potential matrix V̂  (neV)**")
+        _fig, _ax = plt.subplots(figsize=(3.2, 2.8))
+        _fig.patch.set_facecolor("#0e1117"); _ax.set_facecolor("#0e1117")
+        _im6 = _ax.imshow(_Vm6*1e9, cmap="RdBu_r")
+        plt.colorbar(_im6, ax=_ax, shrink=0.85)
+        _lk = ["|1⟩", "|2⟩", "|3⟩"]
+        _ax.set_xticks([0,1,2]); _ax.set_xticklabels(_lk, color="white")
+        _ax.set_yticks([0,1,2]); _ax.set_yticklabels(_lk, color="white")
+        for _i in range(3):
+            for _j in range(3):
+                _ax.text(_j, _i, f"{_Vm6[_i,_j]*1e9:.1f}",
+                         ha="center", va="center", fontsize=8, color="white")
+        _ax.tick_params(colors="white")
+        st.pyplot(_fig); plt.close(_fig)
+
+    with _p6e:
+        st.markdown("**Dressed eigenvalues (neV)**")
+        _fig, _ax = plt.subplots(figsize=(3.2, 2.8))
+        _fig.patch.set_facecolor("#0e1117"); _ax.set_facecolor("#0e1117")
+        _ax.barh(["λ₁", "λ₂", "λ₃"], _ev6*1e9, color=_c6)
+        _ax.axvline(0, color="white", lw=0.8, ls="--")
+        _ax.set_xlabel("Energy (neV)", color="white")
+        for _i, (ev, col) in enumerate(zip(_ev6*1e9, _c6)):
+            _ax.text(ev + (0.3 if ev >= 0 else -0.3), _i,
+                     f"{ev:.2f}", va="center",
+                     ha="left" if ev >= 0 else "right", color=col, fontsize=8)
+        _ax.tick_params(colors="white")
+        for _sp in _ax.spines.values(): _sp.set_edgecolor("#444")
+        st.pyplot(_fig); plt.close(_fig)
+
+    with _p6t:
+        st.markdown("**Bloch triangle (spin populations)**")
+        st.caption("Corners = pure |1⟩, |2⟩, |3⟩; dots = dressed eigenstates ψᵢ")
+        _fig, _ax = plt.subplots(figsize=(3.2, 2.8))
+        _fig.patch.set_facecolor("#0e1117"); _ax.set_facecolor("#0e1117")
+        # Triangle: |1⟩ top (0.5, √3/2), |2⟩ bottom-left (0,0), |3⟩ bottom-right (1,0)
+        # Barycentric → Cartesian: x = p1·0.5 + p3,  y = p1·√3/2
+        _ax.plot([0, 1, 0.5, 0], [0, 0, _SQ3, 0], "w-", lw=1)
+        _ax.text(0.5,  _SQ3+0.07, "|1⟩ open", ha="center", fontsize=8, color="white")
+        _ax.text(-0.10, -0.07,    "|2⟩",       ha="center", fontsize=8, color="white")
+        _ax.text( 1.10, -0.07,    "|3⟩",       ha="center", fontsize=8, color="white")
+        for _i, col in enumerate(_c6):
+            _p1, _p2, _p3 = _ec6[0,_i]**2, _ec6[1,_i]**2, _ec6[2,_i]**2
+            _tx = _p1*0.5 + _p3;  _ty = _p1*_SQ3
+            _ax.scatter([_tx], [_ty], color=col, s=110, zorder=5)
+            _ax.annotate(f"ψ{_i+1}", (_tx, _ty), xytext=(5, 5),
+                         textcoords="offset points", fontsize=7, color=col)
+        _ax.set_xlim(-0.20, 1.20); _ax.set_ylim(-0.13, 1.05)
+        _ax.set_aspect("equal"); _ax.axis("off")
+        st.pyplot(_fig); plt.close(_fig)
+
+    # ── Scattering length sweep: a vs δ₂ ──────────────────────────────────────
+    st.markdown("**Scattering length a(δ₂)**  — δ₃ and all couplings held fixed")
+    _d2_sw6 = np.linspace(0.5, 60.0, 250) * 1e-9
+    _a_sw6  = np.array([
+        _a3ch6(
+            np.array([[_V1_6, _W12_6, _W13_6],
+                      [_W12_6, _V1_6+d, _W23_6],
+                      [_W13_6, _W23_6,  _V1_6+_d3_6]]),
+            d, _d3_6, _ab6, _F6
+        )
+        for d in _d2_sw6
+    ])
+    _a_sw6_pl = np.where(np.abs(_a_sw6) > 5000*a0_nm, np.nan, _a_sw6) / a0_nm
+
+    _fig, _ax = plt.subplots(figsize=(8, 3))
+    _fig.patch.set_facecolor("#0e1117"); _ax.set_facecolor("#0e1117")
+    _ax.plot(_d2_sw6*1e9, _a_sw6_pl, "#69ff47", lw=1.5)
+    _ax.axhline(0, color="white", lw=0.5, ls="--")
+    _ax.axvline(_d2n6, color="#ffd740", lw=1, ls="--", label=f"current δ₂ = {_d2n6:.1f} neV")
+    _ax.set_xlabel("δ₂  (neV)", color="white")
+    _ax.set_ylabel("a  (a₀)",  color="white")
+    _ax.set_title("3-channel scattering length vs channel-2 detuning", color="white")
+    _ax.set_ylim(-3000, 3000)
+    _ax.legend(facecolor="#1e1e2e", labelcolor="white")
+    _ax.tick_params(colors="white")
+    for _sp in _ax.spines.values(): _sp.set_edgecolor("#444")
+    st.pyplot(_fig); plt.close(_fig)
+
+    # ── Wavefunction: K-matrix interior + analytic exterior ───────────────────
+    # Three independent interior ODE solutions → combine so closed-channel BCs hold.
+    # u_j' + κ_j u_j = 0 at r=ā  (j=2,3);  u_1'(ā) = 1  (normalization).
+    # Exterior: u₁ = r − a  (linear),  u₂,₃ = B exp(−κr)  (decaying).
+    st.markdown("**Radial wavefunctions  u₁, u₂, u₃  —  physical scattering solution  (E = 0)**")
+
+    def _ode6_in(r, y):
+        u = np.array([y[0], y[1], y[2]])
+        d2u = _F6 * (_Vm6 @ u)
+        return [y[3], y[4], y[5], d2u[0], d2u[1], d2u[2]]
+
+    _r0_6 = 1e-5 * _ab6
+    _r_in6 = np.linspace(_r0_6, _ab6, 600)
+    _kp1_6 = np.sqrt(_F6 * _d2_6);  _kp2_6 = np.sqrt(_F6 * _d3_6)
+
+    try:
+        # Solve 3 independent ICs inside the well
+        _ss6 = []
+        for _jj in range(3):
+            _ic6 = [0.]*6;  _ic6[_jj] = _r0_6;  _ic6[_jj+3] = 1.
+            _ss6.append(solve_ivp(_ode6_in, [_r0_6, _ab6], _ic6,
+                                  t_eval=_r_in6, method="RK45",
+                                  rtol=1e-10, atol=1e-12))
+        # Value and derivative matrices at r=ā  (rows=channels, cols=ICs)
+        _Yu6 = np.array([[_ss6[_jj].y[_ch,-1] for _jj in range(3)] for _ch in range(3)])
+        _Yp6 = np.array([[_ss6[_jj].y[_ch+3,-1] for _jj in range(3)] for _ch in range(3)])
+        # K-matrix system
+        _Mkm6 = np.array([_Yp6[1,:] + _kp1_6*_Yu6[1,:],
+                           _Yp6[2,:] + _kp2_6*_Yu6[2,:],
+                           _Yp6[0,:]])
+        _ckm6 = np.linalg.solve(_Mkm6, [0.0, 0.0, 1.0])
+
+        # Physical interior wavefunction
+        _u_in6 = sum(_ckm6[_jj] * _ss6[_jj].y[:3, :] for _jj in range(3))  # 3 × N_in
+
+        # Analytic exterior
+        _r_ex6 = np.linspace(_ab6, 2.5*_ab6, 400)
+        _u1_ex6 = _r_ex6 - _a6_cur if np.isfinite(_a6_cur) else np.full_like(_r_ex6, np.nan)
+        _u2_ex6 = _u_in6[1, -1] * np.exp(-_kp1_6 * (_r_ex6 - _ab6))
+        _u3_ex6 = _u_in6[2, -1] * np.exp(-_kp2_6 * (_r_ex6 - _ab6))
+
+        # Combine and normalise
+        _r_all6  = np.concatenate([_r_in6, _r_ex6])
+        _u1_all6 = np.concatenate([_u_in6[0, :], _u1_ex6])
+        _u2_all6 = np.concatenate([_u_in6[1, :], _u2_ex6])
+        _u3_all6 = np.concatenate([_u_in6[2, :], _u3_ex6])
+        _nrm6    = max(np.nanmax(np.abs(_u1_all6)), 1e-30)
+
+        _fig, _ax = plt.subplots(figsize=(8, 3))
+        _fig.patch.set_facecolor("#0e1117"); _ax.set_facecolor("#0e1117")
+        _ra0_6 = _r_all6 / a0_nm
+        _ax.plot(_ra0_6, _u1_all6/_nrm6, _c6[0], lw=1.5, label="u₁  open  (r − a exterior)")
+        _ax.plot(_ra0_6, _u2_all6/_nrm6, _c6[1], lw=1.5, label="u₂  closed (δ₂,  e^{−κ₂r} exterior)")
+        _ax.plot(_ra0_6, _u3_all6/_nrm6, _c6[2], lw=1.5, label="u₃  closed (δ₃,  e^{−κ₃r} exterior)")
+        _ax.axvline(_ab6/a0_nm, color="white", lw=1, ls="--", label="ā  (well edge)")
+        _ax.set_xlabel("r  (a₀)", color="white")
+        _ax.set_ylabel("u / max|u₁|",  color="white")
+        _ax.set_title("Physical scattering wavefunctions: K-matrix interior + analytic exterior", color="white")
+        _ax.legend(facecolor="#1e1e2e", labelcolor="white", fontsize=8)
+        _ax.tick_params(colors="white")
+        for _sp in _ax.spines.values(): _sp.set_edgecolor("#444")
+        st.pyplot(_fig); plt.close(_fig)
+        st.caption(
+            "Interior: K-matrix combination of 3 independent ODE solutions satisfying "
+            "u_j′ + κ_j u_j = 0 at ā for closed channels.  "
+            f"Scattering length a = **{_a6_cur/a0_nm:.1f} a₀** "
+            "(dressed-state analytic formula, exact for square well)."
+        )
+    except Exception as _exc6:
+        st.warning(f"K-matrix solve failed: {_exc6}")
