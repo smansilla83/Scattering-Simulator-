@@ -1098,12 +1098,37 @@ Lange product formula.</b>
 </p>
 """, unsafe_allow_html=True)
 
+    # ── Resonance preset buttons ──────────────────────────────────────────────
+    st.markdown("""
+<div style="background:#111827; border-left:4px solid #69ff47; border-radius:8px;
+            padding:0.7rem 1.1rem; font-size:0.88rem; color:#b0bec5; margin-bottom:0.8rem;">
+  <b style="color:#69ff47;">Quick start — click a preset to configure the sliders and see a resonance</b>
+</div>""", unsafe_allow_html=True)
+    _pc1, _pc2, _pc3 = st.columns(3)
+    with _pc1:
+        if st.button("s-wave pole  (B₀ = −11.1 G)", key="preset_swave"):
+            st.session_state["vdw_c6"]      = 6890
+            st.session_state["vdw_rmin"]    = 20
+            st.session_state["vdw_use_fit"] = True
+            st.rerun()
+    with _pc2:
+        st.markdown("<span style='color:#888; font-size:0.82rem;'>d/g-wave resonances require additional "
+                    "closed channels — not available in this two-channel model.</span>",
+                    unsafe_allow_html=True)
+    with _pc3:
+        if st.button("Reset to defaults", key="preset_reset"):
+            st.session_state["vdw_c6"]      = 6890
+            st.session_state["vdw_rmin"]    = 20
+            st.session_state["vdw_use_fit"] = False
+            st.session_state["vdw_alpha"]   = 1.0
+            st.rerun()
+
     # ── Parameters ────────────────────────────────────────────────────────────
     _W_gamma_v = np.sqrt(TABLE['s-wave']['Gamma'] * 1e6 * h_eVs * hbar2_2mr / a_bar_cs**2)
     col_sl1, col_sl2, col_sl3 = st.columns(3)
     with col_sl1:
-        C6_au    = st.slider("C₆ (atomic units)  — Cs ≈ 6890", 1000, 15000, 6890, 10)
-        r_min_a0 = st.slider("r_min (a₀) — hard-wall radius",  5,    40,    20,    1)
+        C6_au    = st.slider("C₆ (atomic units)  — Cs ≈ 6890", 1000, 15000, 6890, 10, key="vdw_c6")
+        r_min_a0 = st.slider("r_min (a₀) — hard-wall radius",  5,    40,    20,    1,  key="vdw_rmin")
     with col_sl2:
         n_B_vdw  = st.slider("B-sweep points  (more = slower)", 30, 150, 60, 10)
         _W_alpha_v = st.slider("W coupling multiplier α  (α = 1 → W_Γ)", 0.1, 20.0, 1.0, 0.5,
