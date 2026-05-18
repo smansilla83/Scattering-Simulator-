@@ -41,8 +41,8 @@ st.markdown("""
   </p>
   <div style="display:flex; gap:1.4rem; flex-wrap:wrap;">
     <span style="color:#00e5ff;">⟐ Interactive Region I eigenvectors</span>
-    <span style="color:#69ff47;">⟐ Bloch-plane geometry</span>
-    <span style="color:#ffd740;">⟐ Numerical RK45 wavefunction</span>
+    <span style="color:#69ff47;">⟐ Eigenvector coefficient view</span>
+    <span style="color:#ffd740;">⟐ Analytic dressed-state wavefunction</span>
     <span style="color:#ff6ec7;">⟐ Scattering length a(B)  [Fig. 4]</span>
     <span style="color:#ce93d8;">⟐ Binding energy E_b(B)  [Fig. 3]</span>
   </div>
@@ -241,7 +241,7 @@ with tab1:
     fig_pot.tight_layout(); st.pyplot(fig_pot, use_container_width=True); plt.close(fig_pot)
 
     # Bloch-plane
-    st.markdown("<h3 style='color:#ffd740;'>Bloch-plane View</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='color:#ffd740;'>Eigenvector Coefficient View</h3>", unsafe_allow_html=True)
     fig_bl, axes_bl = plt.subplots(1, 2, figsize=(18, 9))
     fig_bl.patch.set_facecolor("#0e1117")
     for ax in axes_bl:
@@ -334,27 +334,19 @@ with tab1:
                bbox=dict(boxstyle="round,pad=0.25", facecolor="#0e1117", edgecolor="none", alpha=0.85))
     fig_sp.tight_layout(); st.pyplot(fig_sp, use_container_width=True); plt.close(fig_sp)
 
-    # Numerical ODE
-    st.markdown("<h3 style='color:#ffd740;'>Numerical Solution — Coupled Schrödinger ODE</h3>",
+    # Analytic wavefunction — no ODE needed inside a constant-V̂ square well
+    st.markdown("<h3 style='color:#ffd740;'>Wavefunction — Analytic Dressed-State Solution</h3>",
                 unsafe_allow_html=True)
     st.markdown("""<p style="color:#b0bec5; font-size:0.93rem; margin:0 0 1rem 0;">
-Solves <b style="color:#fff;">u″ = (2mᵣ/ℏ²)(V̂ − E) u</b> via RK45,
-starting with pure |e⟩ injection at r=0. Dashed lines show the analytical
-dressed-state decomposition.</p>""", unsafe_allow_html=True)
-
-    factor_sim = m_r_me / hbar2_2me
-
-    def ode_sim(r, y):
-        ue, uc, pue, puc = y
-        dpue = factor_sim * ((bare_e - E_tot) * ue + hOmega * uc)
-        dpuc = factor_sim * ((bare_c - E_tot) * uc + hOmega * ue)
-        return [pue, puc, dpue, dpuc]
+Inside Region I, V̂ is <b>constant</b>, so u±″ = −k±² u± is solved <b>exactly</b>.
+Propagating dressed state → <b style="color:#00e5ff;">sin(k±r)</b>;
+evanescent dressed state → <b style="color:#ff6ec7;">sinh(κ±r)</b>.
+Bare-channel wavefunctions follow by the inverse rotation θ.
+Numerical integration is avoided: direct <b>sinh</b> avoids the exponential
+blow-up that plagues the evanescent channel in RK45.</p>""", unsafe_allow_html=True)
 
     r_end_sim  = a_bar * 1.5
-    r_eval_sim = np.linspace(0.0, r_end_sim, 2000)
-    sol_sim    = solve_ivp(ode_sim, [0.0, r_end_sim], [0.0, 0.0, 1.0, 0.0],
-                           t_eval=r_eval_sim, method="RK45", rtol=1e-10, atol=1e-12)
-    ue_num = sol_sim.y[0]; uc_num = sol_sim.y[1]; r_num = sol_sim.t
+    r_sim      = np.linspace(1e-8, r_end_sim, 2000)
 
     def dressed_wf(r, A, k, evanescent):
         return A * (np.sinh(k * r) if evanescent else np.sin(k * r))
@@ -363,8 +355,8 @@ dressed-state decomposition.</p>""", unsafe_allow_html=True)
     Am     = -sin_t / k_minus if k_minus > 1e-8 else -sin_t * 1e8
     evan_p = (k_plus_type  == "evanescent")
     evan_m = (k_minus_type == "evanescent")
-    fp     = dressed_wf(r_num, Ap, k_plus,  evan_p)
-    fm     = dressed_wf(r_num, Am, k_minus, evan_m)
+    fp     = dressed_wf(r_sim, Ap, k_plus,  evan_p)
+    fm     = dressed_wf(r_sim, Am, k_minus, evan_m)
     ue_ana = cos_t * fp - sin_t * fm
     uc_ana = sin_t * fp + cos_t * fm
 
@@ -378,40 +370,46 @@ dressed-state decomposition.</p>""", unsafe_allow_html=True)
         ax.axvline(a_bar, color="#ffd740", lw=1.2, ls="--", alpha=0.6)
 
     ax = axes_ode[0, 0]
-    ax.set_title("Bare channels — numerical vs analytical", color="white")
-    ax.plot(r_num, ue_num, color="#ff6ec7", lw=2, label="uₑ  num")
-    ax.plot(r_num, uc_num, color="#69ff47", lw=2, label="u_c  num")
-    ax.plot(r_num, ue_ana, color="#ff6ec7", lw=1.2, ls="--", alpha=0.6, label="uₑ  ana")
-    ax.plot(r_num, uc_ana, color="#69ff47", lw=1.2, ls="--", alpha=0.6, label="u_c  ana")
+    ax.set_title("Bare channels — analytic (|e⟩ injection at r = 0)", color="white")
+    ax.plot(r_sim, ue_ana, color="#ff6ec7", lw=2, label="uₑ(r)  open")
+    ax.plot(r_sim, uc_ana, color="#69ff47", lw=2, label="u_c(r)  closed")
     ax.axhline(0, color="#444", lw=0.6); ax.set_xlabel("r (nm)"); ax.set_ylabel("amplitude")
     ax.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
 
     ax2 = axes_ode[0, 1]
     ax2.set_title("Dressed channels u±(r)", color="white")
-    ax2.plot(r_num, fp, color="#00e5ff", lw=2,
-             label=f"|+⟩  {'prop.' if not evan_p else 'evan.'}, k={k_plus:.3f} nm⁻¹")
-    ax2.plot(r_num, fm, color="#ce93d8", lw=2,
-             label=f"|−⟩  {'prop.' if not evan_m else 'evan.'}, k={k_minus:.3f} nm⁻¹")
+    _lp = f"sin(k₊r)" if not evan_p else f"sinh(κ₊r)"
+    _lm = f"sin(k₋r)" if not evan_m else f"sinh(κ₋r)"
+    ax2.plot(r_sim, fp, color="#00e5ff", lw=2,
+             label=f"|+⟩  {_lp},  k={k_plus:.3f} nm⁻¹")
+    ax2.plot(r_sim, fm, color="#ce93d8", lw=2,
+             label=f"|−⟩  {_lm},  k={k_minus:.3f} nm⁻¹")
     ax2.axhline(0, color="#444", lw=0.6); ax2.set_xlabel("r (nm)"); ax2.set_ylabel("amplitude")
     ax2.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
 
-    ax3b = axes_ode[1, 0]
-    ax3b.set_title("Residual  |numerical − analytical|", color="white")
-    ax3b.semilogy(r_num[1:], np.abs(ue_num[1:]-ue_ana[1:])+1e-16, color="#ff6ec7", lw=1.5, label="|uₑ error|")
-    ax3b.semilogy(r_num[1:], np.abs(uc_num[1:]-uc_ana[1:])+1e-16, color="#69ff47", lw=1.5, label="|u_c error|")
-    ax3b.set_xlabel("r (nm)"); ax3b.set_ylabel("absolute error")
-    ax3b.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
-    ax3b.tick_params(axis="y", colors="white")
+    ax3 = axes_ode[1, 0]
+    ax3.set_title("Probability density  |u(r)|²", color="white")
+    ax3.plot(r_sim, ue_ana**2, color="#ff6ec7", lw=2, label="|uₑ|²")
+    ax3.plot(r_sim, uc_ana**2, color="#69ff47", lw=2, label="|u_c|²")
+    ax3.plot(r_sim, ue_ana**2 + uc_ana**2, color="#ffd740", lw=1.5, ls="--", label="total")
+    ax3.axhline(0, color="#444", lw=0.6); ax3.set_xlabel("r (nm)"); ax3.set_ylabel("|u|²")
+    ax3.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
 
     ax4 = axes_ode[1, 1]
-    ax4.set_title("Probability density  |u(r)|²", color="white")
-    ax4.plot(r_num, ue_num**2, color="#ff6ec7", lw=2, label="|uₑ|²")
-    ax4.plot(r_num, uc_num**2, color="#69ff47", lw=2, label="|u_c|²")
-    ax4.plot(r_num, ue_num**2 + uc_num**2, color="#ffd740", lw=1.5, ls="--", label="total")
-    ax4.axhline(0, color="#444", lw=0.6); ax4.set_xlabel("r (nm)"); ax4.set_ylabel("|u|²")
+    ax4.set_title("Eigenvector coefficients — bare-channel content of |±⟩", color="white")
+    _lbx = ["|+⟩→|e⟩\ncosθ", "|+⟩→|c⟩\nsinθ", "|−⟩→|e⟩\n−sinθ", "|−⟩→|c⟩\ncosθ"]
+    _vbx = [cos_t**2, sin_t**2, sin_t**2, cos_t**2]
+    _cbx = ["#ff6ec7", "#69ff47", "#ff6ec7", "#69ff47"]
+    _brs = ax4.bar(_lbx, _vbx, color=_cbx, alpha=0.85, edgecolor="#444")
+    ax4.axhline(0.5, color="#ffd740", lw=1, ls=":", alpha=0.7, label="equal mixing (θ = 45°)")
+    ax4.set_ylabel("Coefficient squared"); ax4.set_ylim(0, 1.15)
     ax4.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
+    for _b, _v in zip(_brs, _vbx):
+        ax4.text(_b.get_x() + _b.get_width()/2, _v + 0.03, f"{_v:.3f}",
+                 ha="center", color="white", fontsize=9)
 
-    fig_ode.suptitle("RK45 solution — u′(0) = |e⟩ injection", color="white", fontsize=13, y=1.01)
+    fig_ode.suptitle("Analytic dressed-state solution — |e⟩ injection at r = 0",
+                     color="white", fontsize=13, y=1.01)
     fig_ode.tight_layout(); st.pyplot(fig_ode, use_container_width=True); plt.close(fig_ode)
 
 
@@ -642,24 +640,65 @@ Near B = Bc the channels are degenerate (ΔV → 0) and θ → 45°; far from re
                     color="#ffd740", fontsize=11)
     fig_th.tight_layout(); st.pyplot(fig_th, use_container_width=True); plt.close(fig_th)
 
-    # Cs ODE wavefunction
-    st.markdown(f"<h3 style='color:#00e5ff;'>Numerical Wavefunction at B = {B_probe:.1f} G  (E = 0)</h3>",
+    # ── Analytic K-matrix wavefunction (replaces unstable ODE)
+    st.markdown(f"<h3 style='color:#00e5ff;'>Analytic Wavefunction at B = {B_probe:.1f} G  (E = 0)</h3>",
                 unsafe_allow_html=True)
-    factor_cs = 2.0 * m_r_me / hbar2_2me
+    st.markdown("""
+<p style="color:#b0bec5; font-size:0.9rem;">
+Inside Region I, V̂ is constant so each dressed channel obeys an exact equation:
+<b>sin(k·r)</b> for propagating states, <b>sinh(κ·r)</b> for evanescent ones (both vanish at r = 0).
+Boundary conditions at ā are matched via a 2×2 K-matrix linear system — no ODE integration,
+no exponential blow-up.
+</p>""", unsafe_allow_html=True)
 
-    def ode_cs(t, y):
-        uo, uc, puo, puc = y
-        return [puo, puc,
-                factor_cs * (V_oo_cs * uo + W_eV * uc),
-                factor_cs * (V_cc_cs * uc + W_eV * uo)]
+    factor_cs = 2.0 * m_r_me / hbar2_2me  # Tab 2 convention (consistent with abg_from_V)
 
-    r_end_cs  = a_bar_cs * 3.0
-    r_eval_cs = np.linspace(1e-6, r_end_cs, 3000)
-    sol_cs    = solve_ivp(ode_cs, [1e-6, r_end_cs], [1e-6, 0., 1., 0.],
-                          t_eval=r_eval_cs, method="RK45", rtol=1e-10, atol=1e-12)
-    uo_num    = sol_cs.y[0]; uc_num_cs = sol_cs.y[1]; r_cs = sol_cs.t
-    uo_end    = sol_cs.y[0,-1]; puo_end = sol_cs.y[2,-1]
-    a_num     = r_end_cs - uo_end/puo_end if abs(puo_end) > 1e-12 else np.nan
+    # Diagonalise V̂ at E = 0
+    Vm_cs2 = np.array([[V_oo_cs, W_eV], [W_eV, V_cc_cs]])
+    ev2, ec2 = np.linalg.eigh(Vm_cs2)
+    k2 = np.sqrt(factor_cs * np.abs(ev2))          # interior wavenumbers
+    ev2_evan = ev2 > 0                              # True → evanescent (sinh)
+
+    def _f2(k, r, evanescent):
+        return np.sinh(k * r) if evanescent else np.sin(k * r)
+
+    def _fp2(k, r, evanescent):
+        return k * np.cosh(k * r) if evanescent else k * np.cos(k * r)
+
+    # Exterior closed-channel decay constant (κ² = factor_cs * δ)
+    kappa_ext2 = np.sqrt(factor_cs * max(V_cc_cs, 1e-30))
+    ab2 = a_bar_cs
+
+    # 2×2 K-matrix at r = ā
+    #   Row 0: closed-channel log-derivative BC → u_c'(ā) + κ_ext · u_c(ā) = 0
+    #   Row 1: open-channel normalization      → u_o'(ā) = 1
+    M2 = np.zeros((2, 2))
+    for i in range(2):
+        ki = k2[i]; ev = bool(ev2_evan[i])
+        M2[0, i] = ec2[1, i] * (_fp2(ki, ab2, ev) + kappa_ext2 * _f2(ki, ab2, ev))
+        M2[1, i] = ec2[0, i] * _fp2(ki, ab2, ev)
+    try:
+        coeff2 = np.linalg.solve(M2, np.array([0.0, 1.0]))
+    except np.linalg.LinAlgError:
+        coeff2 = np.zeros(2)
+
+    # Scattering length from interior (u_o' = 1 by normalisation → a = ā − u_o(ā))
+    u_o_ab2 = sum(coeff2[i] * ec2[0, i] * _f2(k2[i], ab2, bool(ev2_evan[i])) for i in range(2))
+    a_km2   = ab2 - u_o_ab2
+
+    # Wavefunction arrays
+    r_in2  = np.linspace(1e-8, ab2, 800)
+    r_ex2  = np.linspace(ab2, ab2 * 3.0, 800)
+
+    uo_in2 = sum(coeff2[i] * ec2[0, i] * _f2(k2[i], r_in2, bool(ev2_evan[i])) for i in range(2))
+    uc_in2 = sum(coeff2[i] * ec2[1, i] * _f2(k2[i], r_in2, bool(ev2_evan[i])) for i in range(2))
+    uo_ex2 = r_ex2 - a_km2
+    u_c_ab2 = sum(coeff2[i] * ec2[1, i] * _f2(k2[i], ab2, bool(ev2_evan[i])) for i in range(2))
+    uc_ex2  = u_c_ab2 * np.exp(-kappa_ext2 * (r_ex2 - ab2))
+
+    r_full2  = np.concatenate([r_in2, r_ex2])
+    uo_full2 = np.concatenate([uo_in2, uo_ex2])
+    uc_full2 = np.concatenate([uc_in2, uc_ex2])
 
     fig5, axes5 = plt.subplots(1, 2, figsize=(16, 5))
     fig5.patch.set_facecolor("#0e1117")
@@ -670,21 +709,23 @@ Near B = Bc the channels are degenerate (ΔV → 0) and θ → 45°; far from re
         for sp in ax.spines.values(): sp.set_edgecolor("#333")
         ax.axvline(a_bar_cs, color="#ffd740", lw=1.2, ls="--", alpha=0.5, label="ā boundary")
     ax = axes5[0]
-    ax.plot(r_cs, uo_num,    color="#69ff47", lw=2, label="u_open(r)")
-    ax.plot(r_cs, uc_num_cs, color="#ff6ec7", lw=2, label="u_closed(r)")
+    ax.plot(r_full2, uo_full2, color="#69ff47", lw=2, label="u_open(r)")
+    ax.plot(r_full2, uc_full2, color="#ff6ec7", lw=2, label="u_closed(r)")
     ax.axhline(0, color="#444", lw=0.6)
     ax.set_xlabel("r (nm)"); ax.set_ylabel("u(r) [arb.]")
-    ax.set_title(f"E=0 wavefunction → a_num={a_num/a0_nm:.1f} a₀  (analytic: {a_probe/a0_nm:.1f} a₀)",
+    ax.set_title(f"E=0 analytic wavefunction → a = {a_km2/a0_nm:.1f} a₀  (formula: {a_probe/a0_nm:.1f} a₀)",
                  color="white")
     ax.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
     ax2 = axes5[1]
-    ax2.plot(r_cs, uo_num**2,    color="#69ff47", lw=2, label="|u_open|²")
-    ax2.plot(r_cs, uc_num_cs**2, color="#ff6ec7", lw=2, label="|u_closed|²")
-    ax2.plot(r_cs, uo_num**2+uc_num_cs**2, color="#ffd740", lw=1.5, ls="--", label="total")
+    ax2.plot(r_full2, uo_full2**2,    color="#69ff47", lw=2, label="|u_open|²")
+    ax2.plot(r_full2, uc_full2**2,    color="#ff6ec7", lw=2, label="|u_closed|²")
+    ax2.plot(r_full2, uo_full2**2+uc_full2**2, color="#ffd740", lw=1.5, ls="--", label="total")
     ax2.axhline(0, color="#444", lw=0.6)
     ax2.set_xlabel("r (nm)"); ax2.set_ylabel("|u(r)|²")
     ax2.set_title("Probability density", color="white")
     ax2.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
+    fig5.suptitle("Interior: analytic sin/sinh dressed states  ·  Exterior: linear (open) + exp decay (closed)",
+                  color="#b0bec5", fontsize=10)
     fig5.tight_layout(); st.pyplot(fig5, use_container_width=True); plt.close(fig5)
 
 
