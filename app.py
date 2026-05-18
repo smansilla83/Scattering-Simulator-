@@ -1826,10 +1826,10 @@ with tab6:
             st.rerun()
     with _pr3:
         if st.button("Broad coupling", key="6_pre3",
-                     help="Maximum couplings — widest resonances, most mixing between channels"):
-            st.session_state["6_W12"] = 15.0
-            st.session_state["6_W13"] = 15.0
-            st.session_state["6_W23"] = 10.0
+                     help="Strong couplings — widest resonances, most channel mixing"):
+            st.session_state["6_W12"] = 50.0
+            st.session_state["6_W13"] = 50.0
+            st.session_state["6_W23"] = 25.0
             st.session_state["6_d2"]  = 5.0
             st.session_state["6_d3"]  = 15.0
             st.rerun()
@@ -1854,9 +1854,9 @@ with tab6:
         _d2_6 = _d2n6*1e-9;  _d3_6 = _d3n6*1e-9
     with _cc6:
         st.markdown("**Couplings**")
-        _W12n6 = st.slider("W₁₂  (neV)", 0.0, 15.0, 10.0, 0.1, key="6_W12")
-        _W13n6 = st.slider("W₁₃  (neV)", 0.0, 15.0, 10.0, 0.1, key="6_W13")
-        _W23n6 = st.slider("W₂₃  (neV)", 0.0, 15.0,  5.0, 0.1, key="6_W23")
+        _W12n6 = st.slider("W₁₂  (neV)", 0.0, 100.0, 10.0, 0.5, key="6_W12")
+        _W13n6 = st.slider("W₁₃  (neV)", 0.0, 100.0, 10.0, 0.5, key="6_W13")
+        _W23n6 = st.slider("W₂₃  (neV)", 0.0, 100.0,  5.0, 0.5, key="6_W23")
         _W12_6 = _W12n6*1e-9;  _W13_6 = _W13n6*1e-9;  _W23_6 = _W23n6*1e-9
 
     # ── Potential matrix & diagonalisation ─────────────────────────────────────
