@@ -57,13 +57,14 @@ with ca:
 
 with cb:
     st.markdown("**Eigenvectors**")
-    st.latex(
-        rf"|{{+}}\rangle = \cos\theta\,|e\rangle + \sin\theta\,|c\rangle"
-        rf" = {cos_t:+.4f}\,|e\rangle {sin_t:+.4f}\,|c\rangle"
+    st.markdown(
+        rf"$|{{+}}\rangle = \cos\theta\,|e\rangle + \sin\theta\,|c\rangle"
+        rf" = {cos_t:+.4f}\,|e\rangle {sin_t:+.4f}\,|c\rangle$"
     )
-    st.latex(
-        rf"|{{-}}\rangle = -\sin\theta\,|e\rangle + \cos\theta\,|c\rangle"
-        rf" = {-sin_t:+.4f}\,|e\rangle {cos_t:+.4f}\,|c\rangle"
+    st.markdown("")
+    st.markdown(
+        rf"$|{{-}}\rangle = -\sin\theta\,|e\rangle + \cos\theta\,|c\rangle"
+        rf" = {-sin_t:+.4f}\,|e\rangle {cos_t:+.4f}\,|c\rangle$"
     )
 
 with cc:
