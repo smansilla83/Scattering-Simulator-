@@ -40,41 +40,51 @@ evals_np, evecs_np = np.linalg.eigh(V_matrix)
 
 # ── Analytical results — landscape (3 columns) ─────────────────────────────────
 st.subheader("Analytical results")
-ca, cb, cc = st.columns(3)
+st.markdown(f"""
+<div style="display:flex; gap:3rem; flex-wrap:nowrap; align-items:flex-start;">
 
-with ca:
-    st.markdown("**Derived quantities**")
-    st.markdown(f"""
-| Quantity | Value |
-|---|---|
-| $\\Delta_V = (V_e - V_c)/2$ | **{Delta_V:.4f} eV** |
-| $R = \\sqrt{{\\Delta_V^2 + \\hbar^2\\Omega^2}}$ | **{R:.4f} eV** |
-| $2\\theta$ | **{np.degrees(two_theta):.2f}°** |
-| $\\theta$ | **{np.degrees(theta):.2f}°** |
-| $\\lambda_+$ | **{lam_plus:.4f} eV** |
-| $\\lambda_-$ | **{lam_minus:.4f} eV** |
-""")
+  <div style="flex:1; min-width:220px;">
+    <b>Derived quantities</b><br><br>
+    <table style="width:100%; border-collapse:collapse;">
+      <tr><td>ΔV = (Ve − Vc)/2</td><td><b>{Delta_V:.4f} eV</b></td></tr>
+      <tr><td>R = √(ΔV² + ℏ²Ω²)</td><td><b>{R:.4f} eV</b></td></tr>
+      <tr><td>2θ</td><td><b>{np.degrees(two_theta):.2f}°</b></td></tr>
+      <tr><td>θ</td><td><b>{np.degrees(theta):.2f}°</b></td></tr>
+      <tr><td>λ₊</td><td><b>{lam_plus:.4f} eV</b></td></tr>
+      <tr><td>λ₋</td><td><b>{lam_minus:.4f} eV</b></td></tr>
+    </table>
+  </div>
 
-with cb:
-    st.markdown("**Eigenvectors**")
-    st.markdown(
-        rf"$|{{+}}\rangle = \cos\theta\,|e\rangle + \sin\theta\,|c\rangle"
-        rf" = {cos_t:+.4f}\,|e\rangle {sin_t:+.4f}\,|c\rangle$"
-    )
-    st.markdown("")
-    st.markdown(
-        rf"$|{{-}}\rangle = -\sin\theta\,|e\rangle + \cos\theta\,|c\rangle"
-        rf" = {-sin_t:+.4f}\,|e\rangle {cos_t:+.4f}\,|c\rangle$"
-    )
+  <div style="flex:1.4; min-width:280px;">
+    <b>Eigenvectors</b><br><br>
+    |+⟩ = cosθ |e⟩ + sinθ |c⟩ = <b>{cos_t:+.4f}</b> |e⟩ <b>{sin_t:+.4f}</b> |c⟩<br><br>
+    |−⟩ = −sinθ |e⟩ + cosθ |c⟩ = <b>{-sin_t:+.4f}</b> |e⟩ <b>{cos_t:+.4f}</b> |c⟩
+  </div>
 
-with cc:
-    st.markdown("**NumPy verification**")
-    st.markdown(f"""
-| State | $|e\\rangle$ | $|c\\rangle$ | Eigenvalue |
-|---|---|---|---|
-| $\\lambda_-$ | `{evecs_np[0,0]:+.4f}` | `{evecs_np[1,0]:+.4f}` | `{evals_np[0]:.4f} eV` |
-| $\\lambda_+$ | `{evecs_np[0,1]:+.4f}` | `{evecs_np[1,1]:+.4f}` | `{evals_np[1]:.4f} eV` |
-""")
+  <div style="flex:1.4; min-width:280px;">
+    <b>NumPy verification</b><br><br>
+    <table style="width:100%; border-collapse:collapse;">
+      <tr style="border-bottom:1px solid #555;">
+        <th style="text-align:left;">State</th>
+        <th>|e⟩</th><th>|c⟩</th><th>Eigenvalue</th>
+      </tr>
+      <tr>
+        <td>λ₋</td>
+        <td><code>{evecs_np[0,0]:+.4f}</code></td>
+        <td><code>{evecs_np[1,0]:+.4f}</code></td>
+        <td><code>{evals_np[0]:.4f} eV</code></td>
+      </tr>
+      <tr>
+        <td>λ₊</td>
+        <td><code>{evecs_np[0,1]:+.4f}</code></td>
+        <td><code>{evecs_np[1,1]:+.4f}</code></td>
+        <td><code>{evals_np[1]:.4f} eV</code></td>
+      </tr>
+    </table>
+  </div>
+
+</div>
+""", unsafe_allow_html=True)
 
 st.divider()
 
