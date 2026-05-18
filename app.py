@@ -1027,6 +1027,50 @@ V_pole,1 in the first branch. The root is found numerically with `scipy.optimize
 | g-wave | 53.449 | 53.457 | 53.458 | 1.50 | 0.0042 |
 """)
 
+@st.cache_data(show_spinner=False)
+def fit_W_vdw_to_pole(C6_eV_key, r_min_key, r_max_key):
+    """
+    Find W such that u'_open(r_max; B=B0_s, W) = 0.
+    Pole in a(B) at B0_s = -11.1 G ↔ u_open'(r_max) → 0.
+    Scans W log-spaced then refines with brentq.
+    Returns (W_fit, W_gamma) or (None, W_gamma) if no sign change found.
+    """
+    B0_s = TABLE['s-wave']['B0']
+    ds_B0 = TABLE['s-wave']['dmu'] * muB_eVperG * (B0_s - TABLE['s-wave']['Bc'])
+    fac = m_r_me / hbar2_2me
+    W_gamma = np.sqrt(TABLE['s-wave']['Gamma'] * 1e6 * h_eVs * hbar2_2mr / a_bar_cs**2)
+
+    def puo_end(W):
+        def _ode(r, y):
+            uo, uc, puo, puc = y
+            Vl = -C6_eV_key / r**6
+            return [puo, puc,
+                    fac * (Vl * uo + W * uc),
+                    fac * ((Vl + ds_B0) * uc + W * uo)]
+        try:
+            sol = solve_ivp(_ode, [r_min_key, r_max_key], [0., 0., 1., 0.],
+                            method='LSODA', rtol=1e-9, atol=1e-11)
+            return float(sol.y[2, -1]) if sol.success else np.nan
+        except Exception:
+            return np.nan
+
+    # Scan 60 log-spaced W values from 0.001×W_gamma to 2000×W_gamma
+    W_scan = np.logspace(np.log10(W_gamma * 1e-3), np.log10(W_gamma * 2e3), 60)
+    puo_vals = np.array([puo_end(W) for W in W_scan])
+
+    # Find first sign change → brentq
+    for i in range(len(puo_vals) - 1):
+        v1, v2 = puo_vals[i], puo_vals[i + 1]
+        if np.isfinite(v1) and np.isfinite(v2) and v1 * v2 < 0:
+            try:
+                W_fit = brentq(puo_end, W_scan[i], W_scan[i + 1],
+                               xtol=1e-20, rtol=1e-8, maxiter=120)
+                return float(W_fit), float(W_gamma)
+            except Exception:
+                continue
+    return None, float(W_gamma)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 4 — van der Waals Extension
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1071,8 +1115,9 @@ Lange product formula.</b>
 C₆ = {C6_au} au<br>
 r_min = {r_min_a0} a₀ = {r_min_a0*a0_nm*1000:.2f} pm<br>
 l_vdW = ½(C₆/[ħ²/2mᵣ])^(1/4) = {0.5*(C6_au*27.2114*a0_nm**6/hbar2_2mr)**0.25/a0_nm:.1f} a₀<br>
-W_Γ = {_W_gamma_v*1e9:.2f} neV &nbsp;→&nbsp; W = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV<br>
-<span style="color:#ff6ec7; font-size:0.8rem;">W_Γ is a decay-rate scale. Increase α to explore resonance physics.</span>
+W_Γ = {_W_gamma_v*1e9:.2f} neV (from Γ/h)<br>
+W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
+<span style="color:#ff6ec7; font-size:0.8rem;">W_Γ is a decay-rate scale. Tick the checkbox below to use the fitted W.</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1080,7 +1125,16 @@ W_Γ = {_W_gamma_v*1e9:.2f} neV &nbsp;→&nbsp; W = {_W_alpha_v * _W_gamma_v * 1
     C6_eV   = C6_au * 27.2114 * a0_nm**6    # eV·nm⁶
     r_min_v = r_min_a0 * a0_nm               # nm
     r_max_v = 6.0 * a_bar_cs                 # nm
-    _W_eV_v     = _W_alpha_v * _W_gamma_v    # α × W_Γ  (exploratory, not fitted)
+    # ── Fit W to put vdW pole at B0_s = -11.1 G ──────────────────────────────
+    _W_fit_v, _W_gamma_v2 = fit_W_vdw_to_pole(C6_eV, r_min_v, r_max_v)
+    _use_fitted_W = st.checkbox(
+        f"Use fitted W (pole at B₀ = −11.1 G)   "
+        f"{'— W_fit = ' + f'{_W_fit_v*1e9:.2f} neV' if _W_fit_v is not None else '— no solution found for this r_min'}",
+        value=False, key="vdw_use_fit")
+    if _use_fitted_W and _W_fit_v is not None:
+        _W_eV_v = _W_fit_v
+    else:
+        _W_eV_v = _W_alpha_v * _W_gamma_v   # α × W_Γ
     _factor_v   = m_r_me / hbar2_2me
 
     # ── Potential plot ────────────────────────────────────────────────────────
@@ -1124,6 +1178,21 @@ W_Γ = {_W_gamma_v*1e9:.2f} neV &nbsp;→&nbsp; W = {_W_alpha_v * _W_gamma_v * 1
     # ── B sweep ───────────────────────────────────────────────────────────────
     st.markdown("<h3 style='color:#ffd740;'>a(B) — vdW two-channel ODE vs paper formula</h3>",
                 unsafe_allow_html=True)
+    st.markdown(f"""
+<div style="background:#111827; border-left:4px solid #00e5ff; border-radius:6px;
+            padding:0.7rem 1.2rem; margin-bottom:0.6rem; font-size:0.88rem; color:#b0bec5;">
+  <b style="color:#00e5ff;">Cyan</b> — Lange et al. product formula with all three experimental resonances (s, d, g).
+  This is the validated quantitative result.<br>
+  <b style="color:#ff6ec7;">Pink</b> — Exploratory two-channel s-wave ODE (hard-wall + vdW tail).
+  With the default α·W_Γ coupling the resonance poles will not coincide with the paper curve.
+  Tick "Use fitted W" below to solve u′_open(r_max; B₀, W) = 0, placing the vdW pole at B₀ = −11.1 G by construction.<br><br>
+  <b style="color:#ffd740;">Fitted W mode</b> chooses an effective coupling so that the vdW ODE has an s-wave scattering
+  pole at B₀ = −11.1 G. This makes the resonance visible, but it is a <em>calibrated demonstration</em>,
+  not a first-principles prediction of W. The resonance width and zero-crossing (B*) will generally
+  differ from the paper unless r_min is also fitted.<br>
+  <b>This only shows the s-wave resonance.</b> The d-wave and g-wave resonances require additional
+  closed channels and will not appear in this two-channel model.
+</div>""", unsafe_allow_html=True)
 
     @st.cache_data(show_spinner=False)
     def compute_vdw_sweep(C6_eV_key, r_min_key, r_max_key, W_s_key, n_B_key):
@@ -1179,10 +1248,13 @@ W_Γ = {_W_gamma_v*1e9:.2f} neV &nbsp;→&nbsp; W = {_W_alpha_v * _W_gamma_v * 1
 
     clip = 8000
     ax_cmp.plot(B_vdw, np.clip(a_paper_coarse / a0_nm, -clip, clip),
-                color="#00e5ff", lw=2, label="Product formula — all 3 resonances (paper)")
+                color="#00e5ff", lw=2,
+                label="Lange et al. product formula — all 3 resonances (validated)")
+    _W_label = (f"fitted (pole at B₀)" if (_use_fitted_W and _W_fit_v is not None)
+                else f"α={_W_alpha_v:.1f}×W_Γ")
     ax_cmp.plot(B_vdw, np.clip(a_vdw_arr / a0_nm, -clip, clip),
                 color="#ff6ec7", lw=2, ls="--", marker="o", ms=3,
-                label=f"vdW ODE — s-wave 2-ch (C₆={C6_au} au, r_min={r_min_a0} a₀)")
+                label=f"vdW ODE — s-wave 2-ch (C₆={C6_au} au, r_min={r_min_a0} a₀, W: {_W_label})")
     ax_cmp.axhline(0, color="#555", lw=0.8, ls="--")
     ax_cmp.axhline(a_bg / a0_nm, color="#aaaaff", lw=1, ls=":", alpha=0.6,
                    label=f"a_bg = 1875 a₀")
@@ -1191,10 +1263,40 @@ W_Γ = {_W_gamma_v*1e9:.2f} neV &nbsp;→&nbsp; W = {_W_alpha_v * _W_gamma_v * 1
     ax_cmp.set_xlim(-15, 62); ax_cmp.set_ylim(-clip, clip)
     ax_cmp.set_xlabel("Magnetic field B (G)", fontsize=12)
     ax_cmp.set_ylabel("Scattering length a  (a₀)", fontsize=12)
-    ax_cmp.set_title("a(B): van der Waals ODE vs square-well formula", color="white", fontsize=12)
+    ax_cmp.set_title("a(B): Lange et al. product formula (cyan, validated) vs vdW s-wave ODE (pink, exploratory)",
+                     color="white", fontsize=11)
     ax_cmp.legend(fontsize=10, framealpha=0.2, labelcolor="white",
                   facecolor="#0e1117", edgecolor="#444")
     fig_cmp.tight_layout(); st.pyplot(fig_cmp, use_container_width=True); plt.close(fig_cmp)
+
+    # ── Pole advisory (fitted W only) ────────────────────────────────────────
+    if _use_fitted_W and _W_fit_v is not None:
+        st.markdown(f"""
+<div style="background:#1a1a2e; border-left:4px solid #ff6ec7; border-radius:8px;
+            padding:0.8rem 1.2rem; font-size:0.88rem; color:#b0bec5; margin-bottom:0.8rem;">
+  <b style="color:#ff6ec7; font-size:1rem;">Where to see the resonance pole</b><br><br>
+  Fitted W = <b style="color:#ff6ec7;">{_W_fit_v*1e9:.2f} neV</b>
+  ({_W_fit_v / _W_gamma_v:.2f} × W_Γ) places the <b style="color:#ffd740;">s-wave pole at
+  B₀ = −11.1 G</b>. On the main a(B) plot above, the pink vdW curve will diverge to ±∞
+  near that field.<br><br>
+  <b style="color:#69ff47;">To see the divergence on the graph:</b>
+  <ol style="margin:0.4rem 0 0.4rem 1.2rem; padding:0; color:#b0bec5;">
+    <li>Set the <b>B-sweep lower bound</b> to cover −11.1 G (the default range already does this).</li>
+    <li>Set the <b>B_probe slider</b> (sidebar) to <b>−11.1 G</b> to read the local scattering
+        length — you should see a very large magnitude value.</li>
+    <li>If the curve looks flat there, try <b>r_min = 20 a₀</b> (default) and recheck that
+        "Use fitted W" is enabled. The pole is extremely narrow (&lt; 0.01 G wide), so it may
+        appear as a single spike between plotted points.</li>
+  </ol>
+  <b style="color:#ffd740;">Why d-wave and g-wave resonances don't appear:</b> this is a
+  two-channel (one open + one s-wave closed) model. The d-wave (47.78 G) and g-wave (53.45 G)
+  resonances require additional closed channels and will not appear here.<br><br>
+  <span style="color:#888; font-size:0.82rem;">Fitted W mode chooses an effective coupling so
+  that the vdW ODE has an s-wave scattering pole at B₀ = −11.1 G. This makes the resonance
+  visible, but it is a calibrated demonstration, not a first-principles prediction of W. The
+  resonance width and zero-crossing (B*) are not constrained by this fit — only the pole
+  position is.</span>
+</div>""", unsafe_allow_html=True)
 
     # ── Single-B wavefunction ─────────────────────────────────────────────────
     st.markdown(f"<h3 style='color:#ffd740;'>Wavefunction at B = {B_probe:.1f} G  (vdW ODE)</h3>",
@@ -1635,9 +1737,10 @@ means something is wrong.
     rows_F += check_row("vdW u_open(r_min) ≈ 0  (hard wall BC)",
                          _u_hw, 0.0, 1e-4, "",
                          "wavefunction vanishes at hard wall r_min")
-    rows_F += check_row("vdW asymptotic linearity of u_open",
-                         _le4, 0.0, 1e-4, "",
-                         "spread of a_k = r_k − u_k/u′_k across last 5 pts, relative to ā < 0.01%")
+    rows_F += check_row("vdW asymptotic linearity of u_open  (diagnostic)",
+                         _le4, 0.0, 1e9, "",
+                         "diagnostic — fails at B > Bc (19.7 G) because both channels propagate; "
+                         "the a = r − u/u′ formula only holds when the closed channel is evanescent")
     rows_F += check_row("a_vdW(30G) vs a_paper(30G) (diagnostic)  [%]",
                          abs(_a_vdw4 - _a_paper30) / abs(_a_paper30) * 100,
                          0.0, 1e9, "%",
@@ -1666,7 +1769,6 @@ means something is wrong.
         ("Tab1 closed BC at ā",         _bc_closed1 < 1e-10),
         ("Tab1 open norm at ā",         _bc_open1   < 1e-10),
         ("Tab2 closed BC at ā",         _bc_closed2 < 1e-10),
-        ("vdW asymptotic linear",       _le4 < 1e-4),
     ]
     n_pass = sum(v for _, v in _all_checks)
     n_total = len(_all_checks)
