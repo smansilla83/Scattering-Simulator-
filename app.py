@@ -1306,13 +1306,13 @@ means something is wrong.
 
     # Large a limit: κ ≈ 1/a → E_b → -hbar2_2mr/a² (simple universal)
     _a_large   = 1000 * a_bar_cs   # very large
-    _Eb_eff    = float(_Eb_kHz(np.array([_a_large])))
+    _Eb_eff    = _Eb_kHz(np.array([_a_large])).item()
     _kappa_eff = (1 - np.sqrt(1 - 2*a_bar_cs/_a_large)) / a_bar_cs
     _Eb_simple = -hbar2_2mr / _a_large**2 / (h_eVs * 1e3)   # simple 1/a²
     _Eb_exact  = -hbar2_2mr * _kappa_eff**2 / (h_eVs * 1e3)
 
     # at a = ∞, E_b → 0
-    _Eb_at_inf = float(_Eb_kHz(np.array([1e10 * a_bar_cs])))
+    _Eb_at_inf = _Eb_kHz(np.array([1e10 * a_bar_cs])).item()
 
     # effective-range correction: κ ≈ (1 - √(1-2ā/a))/ā; for a=10ā, compare
     _a_10 = 10 * a_bar_cs
