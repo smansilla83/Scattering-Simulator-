@@ -82,7 +82,7 @@ st.sidebar.markdown(f"""
 
 ā = 95.7 a₀  |  a_bg = 1875 a₀
 """)
-B_probe = st.sidebar.slider("B (G) — probe field", 20.0, 62.0, 30.0, 0.1)
+B_probe = st.sidebar.slider("B (G) — probe field", -15.0, 62.0, 30.0, 0.1)
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -481,7 +481,7 @@ with tab2:
         Eb[m2]= -hbar2_2mr / a[m2]**2 / (h_eVs * 1e3)
         return Eb
 
-    B_arr    = np.linspace(20.0, 62.0, 8000)
+    B_arr    = np.linspace(-15.0, 62.0, 8000)
     a_arr    = a_of_B(B_arr)
     Eb_arr   = Eb_kHz(a_arr)
     a_probe  = a_of_B(B_probe)
@@ -503,7 +503,7 @@ with tab2:
         ax3.scatter([B_probe], [Eb_probe], color="#00e5ff", s=80, zorder=6)
         ax3.text(B_probe+0.3, Eb_probe-8,
                  f"B={B_probe:.1f}G\nEb/h={Eb_probe:.1f}kHz", color="#00e5ff", fontsize=9)
-    ax3.set_xlim(20, 62); ax3.set_ylim(-360, 10)
+    ax3.set_xlim(-15, 62); ax3.set_ylim(-360, 10)
     ax3.set_xlabel("Magnetic field (G)", fontsize=12)
     ax3.set_ylabel("Binding energy  Eᵦ/h  (kHz)", fontsize=12)
     ax3.set_title("Binding energy of Cs₂  [cf. Fig. 3, Lange et al.]", color="white", fontsize=12)
@@ -530,7 +530,7 @@ with tab2:
     ax4.scatter([B_probe], [np.clip(a_probe/a0_nm,-8000,8000)], color="#00e5ff", s=80, zorder=6)
     ax4.text(B_probe+0.3, np.clip(a_probe/a0_nm,-8000,8000)+200,
              f"a={a_probe/a0_nm:.0f} a₀", color="#00e5ff", fontsize=9)
-    ax4.set_xlim(20, 62); ax4.set_ylim(-8000, 8000)
+    ax4.set_xlim(-15, 62); ax4.set_ylim(-8000, 8000)
     ax4.set_xlabel("Magnetic field (G)", fontsize=12)
     ax4.set_ylabel("Scattering length  a  (a₀)", fontsize=12)
     ax4.set_title("Scattering length a(B)  [cf. Fig. 4, Lange et al.]", color="white", fontsize=12)
@@ -653,7 +653,7 @@ Near B = Bc the channels are degenerate (ΔV → 0) and θ → 45°; far from re
         ax.xaxis.label.set_color("white"); ax.yaxis.label.set_color("white")
         ax.title.set_color("white")
         for sp in ax.spines.values(): sp.set_edgecolor("#333")
-        ax.set_xlim(20, 62)
+        ax.set_xlim(-15, 62)
         for nm, r in TABLE.items():
             ax.axvline(r['B0'], color="#ffd740", lw=1, ls="--", alpha=0.4)
             ax.axvline(r['Bc'], color="#ff6ec7", lw=1, ls=":",  alpha=0.4)
