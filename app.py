@@ -2,6 +2,7 @@ import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from scipy.integrate import solve_ivp
 
 st.set_page_config(page_title="Region I Eigenvector Simulator", layout="wide")
 
@@ -28,14 +29,49 @@ st.markdown("""
 
 # ── Sidebar inputs ─────────────────────────────────────────────────────────────
 st.sidebar.header("Parameters")
-st.sidebar.markdown("**Potential**")
-Ve     = st.sidebar.slider("Ve  (eV)",   min_value=-10.0, max_value=10.0, value=2.0,  step=0.1)
-Vc     = st.sidebar.slider("Vc  (eV)",   min_value=-10.0, max_value=10.0, value=-2.0, step=0.1)
-hOmega = st.sidebar.slider("ℏΩ  (eV)",  min_value=0.0,   max_value=10.0, value=1.0,  step=0.05)
-a_bar  = st.sidebar.slider("ā  (nm)",    min_value=0.5,   max_value=5.0,  value=2.0,  step=0.1)
+
+st.sidebar.markdown("**Potential** *(Region I, r < ā)*")
+Ve     = st.sidebar.slider("Ve  (eV) — electron well depth",  min_value=-10.0, max_value=10.0, value=2.0,  step=0.1)
+Vc     = st.sidebar.slider("Vc  (eV) — cavity well depth",   min_value=-10.0, max_value=10.0, value=-2.0, step=0.1)
+hOmega = st.sidebar.slider("ℏΩ  (eV) — Rabi coupling",       min_value=0.0,   max_value=10.0, value=1.0,  step=0.05)
+a_bar  = st.sidebar.slider("ā  (nm) — region boundary",       min_value=0.5,   max_value=5.0,  value=2.0,  step=0.1)
 st.sidebar.markdown("**Full Hamiltonian**")
-E_tot  = st.sidebar.slider("E  (eV)",    min_value=-10.0, max_value=10.0, value=0.5,  step=0.1)
-m_r    = st.sidebar.slider("mᵣ / mₑ",   min_value=0.05,  max_value=2.0,  value=0.5,  step=0.05)
+E_tot  = st.sidebar.slider("E  (eV) — total scattering energy", min_value=-10.0, max_value=10.0, value=0.5, step=0.1)
+m_r    = st.sidebar.slider("mᵣ / mₑ — reduced mass",            min_value=0.05,  max_value=2.0,  value=0.5, step=0.05)
+
+with st.sidebar.expander("What does each parameter do?"):
+    st.markdown("""
+**Ve** — depth of the potential well in the bare electron channel |e⟩ inside Region I.
+Sets the diagonal element $V_{ee} = -V_e$.
+
+**Vc** — depth of the well in the bare cavity channel |c⟩.
+Sets $V_{cc} = -V_c$.
+
+**ℏΩ** — vacuum Rabi coupling; the off-diagonal element that mixes |e⟩ and |c⟩.
+Controls how strongly the atom and cavity exchange energy.
+*Only ΔV = (Ve−Vc)/2 and ℏΩ determine the mixing angle θ and eigenvectors —
+the common offset −(Ve+Vc)/2 shifts eigenvalues only.*
+
+**ā** — radius of the interaction region. Outside this boundary the potential drops to zero (free propagation).
+
+**E** — total scattering energy. Determines which dressed channels are open (E > λ±, propagating)
+vs closed (E < λ±, evanescent).
+
+**mᵣ** — reduced mass of the atom–cavity system, sets the kinetic energy scale
+$k_\\pm = \\sqrt{2m_r(E-\\lambda_\\pm)}/\\hbar$.
+
+---
+**Why no field dependence?**
+V̂ is taken as *constant* inside Region I — the central approximation of this section.
+Field dependence (e.g. a spatially varying laser or cavity mode) would make Ω = Ω(r),
+breaking the analytic diagonalisation and requiring a numerical approach.
+
+**For what atom?**
+The |e⟩/|c⟩ basis and ℏΩ coupling are cavity QED language: |e⟩ is an excited atomic state,
+|c⟩ is a single cavity photon. This is a generic two-channel model — commonly applied to
+**hydrogen, rubidium, or caesium** in cavity QED scattering problems.
+""")
+
 
 # ── Physical constant: ℏ²/2mₑ in eV·nm² ──────────────────────────────────────
 hbar2_over_2me = 0.038100  # eV·nm²
@@ -338,3 +374,135 @@ ax3.text(0.02, E_tot, f"E = {E_tot:.2f} eV", color="#ffd740", va="center", fonts
 fig2.tight_layout()
 st.pyplot(fig2, use_container_width=True)
 plt.close(fig2)
+
+st.divider()
+
+# ── Numerical solution ─────────────────────────────────────────────────────────
+st.markdown("<h3 style='color:#00e5ff;'>Numerical Solution — Coupled Schrödinger ODE</h3>",
+            unsafe_allow_html=True)
+st.markdown("""
+<p style="color:#b0bec5; font-size:0.93rem; margin:0 0 1rem 0;">
+Solves <b style="color:#ffffff;">u″ = (2mᵣ/ℏ²)(V̂ − E) u</b> numerically via RK45,
+starting with a pure |e⟩ injection at r = 0 [u(0) = 0, u′(0) = (1, 0)].
+Dashed lines show the analytical dressed-state decomposition for comparison.
+</p>
+""", unsafe_allow_html=True)
+
+factor = 2.0 * m_r / hbar2_over_2me   # nm⁻² eV⁻¹
+
+def ode(r, y):
+    ue, uc, pue, puc = y
+    dpue = factor * ((bare_e - E_tot) * ue + hOmega * uc)
+    dpuc = factor * ((bare_c - E_tot) * uc + hOmega * ue)
+    return [pue, puc, dpue, dpuc]
+
+r_end  = a_bar * 1.5
+r_eval = np.linspace(0.0, r_end, 2000)
+sol    = solve_ivp(ode, [0.0, r_end], [0.0, 0.0, 1.0, 0.0],
+                   t_eval=r_eval, method="RK45", rtol=1e-10, atol=1e-12)
+
+ue_num = sol.y[0]
+uc_num = sol.y[1]
+r_num  = sol.t
+
+# ── Analytical solution with same BCs ─────────────────────────────────────────
+# In dressed basis: u±(r) = A± * f±(r), with f = sin(k r) or sinh(κ r)
+# BCs: u(0)=0 → no cosine/cosh; u'_e(0)=1, u'_c(0)=0
+# cos_t·A+·k+ − sin_t·A-·k- = 1
+# sin_t·A+·k+ + cos_t·A-·k- = 0  → A-·k- = −sin_t, A+·k+ = cos_t
+
+def dressed_wf(r, A, k, evanescent):
+    if evanescent:
+        return A * np.sinh(k * r)
+    return A * np.sin(k * r)
+
+# channel +
+if k_plus > 1e-8:
+    Ap = cos_t / k_plus
+    evan_p = (k_plus_type == "evanescent")
+else:
+    Ap, evan_p = cos_t * 1e8, False
+
+# channel -
+if k_minus > 1e-8:
+    Am = -sin_t / k_minus
+    evan_m = (k_minus_type == "evanescent")
+else:
+    Am, evan_m = -sin_t * 1e8, False
+
+fp = dressed_wf(r_num, Ap, k_plus,  evan_p)
+fm = dressed_wf(r_num, Am, k_minus, evan_m)
+
+ue_ana =  cos_t * fp - sin_t * fm
+uc_ana =  sin_t * fp + cos_t * fm
+
+# dressed-channel amplitudes
+fp_raw = dressed_wf(r_num, Ap, k_plus,  evan_p)
+fm_raw = dressed_wf(r_num, Am, k_minus, evan_m)
+
+# ── Plot ──────────────────────────────────────────────────────────────────────
+fig3, axes3 = plt.subplots(2, 2, figsize=(16, 9), sharex=False)
+fig3.patch.set_facecolor("#0e1117")
+
+for ax in axes3.flat:
+    ax.set_facecolor("#0e1117")
+    ax.tick_params(colors="white", labelsize=10)
+    ax.xaxis.label.set_color("white")
+    ax.yaxis.label.set_color("white")
+    ax.title.set_color("white")
+    for sp in ax.spines.values():
+        sp.set_edgecolor("#333")
+    ax.axvline(a_bar, color="#ffd740", lw=1.2, ls="--", alpha=0.6)
+
+# Top-left: bare channels numerical vs analytical
+ax = axes3[0, 0]
+ax.set_title("Bare channels — numerical vs analytical", color="white")
+ax.plot(r_num, ue_num, color="#ff6ec7", lw=2,   label="uₑ  numerical")
+ax.plot(r_num, uc_num, color="#69ff47", lw=2,   label="u_c  numerical")
+ax.plot(r_num, ue_ana, color="#ff6ec7", lw=1.2, ls="--", alpha=0.6, label="uₑ  analytical")
+ax.plot(r_num, uc_ana, color="#69ff47", lw=1.2, ls="--", alpha=0.6, label="u_c  analytical")
+ax.axhline(0, color="#444", lw=0.6)
+ax.set_xlabel("r  (nm)")
+ax.set_ylabel("amplitude")
+ax.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
+
+# Top-right: dressed channel amplitudes
+ax2 = axes3[0, 1]
+ax2.set_title("Dressed channels u±(r)", color="white")
+ax2.plot(r_num, fp_raw, color="#00e5ff", lw=2,
+         label=f"|+⟩  ({'prop.' if not evan_p else 'evan.'}, k={k_plus:.3f} nm⁻¹)")
+ax2.plot(r_num, fm_raw, color="#ce93d8", lw=2,
+         label=f"|−⟩  ({'prop.' if not evan_m else 'evan.'}, k={k_minus:.3f} nm⁻¹)")
+ax2.axhline(0, color="#444", lw=0.6)
+ax2.set_xlabel("r  (nm)")
+ax2.set_ylabel("amplitude")
+ax2.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
+
+# Bottom-left: residual (numerical − analytical)
+ax3b = axes3[1, 0]
+ax3b.set_title("Residual  |numerical − analytical|", color="white")
+ax3b.semilogy(r_num[1:], np.abs(ue_num[1:] - ue_ana[1:]) + 1e-16,
+              color="#ff6ec7", lw=1.5, label="|uₑ error|")
+ax3b.semilogy(r_num[1:], np.abs(uc_num[1:] - uc_ana[1:]) + 1e-16,
+              color="#69ff47", lw=1.5, label="|u_c error|")
+ax3b.set_xlabel("r  (nm)")
+ax3b.set_ylabel("absolute error")
+ax3b.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
+ax3b.tick_params(axis="y", colors="white")
+
+# Bottom-right: probability densities |u|²
+ax4 = axes3[1, 1]
+ax4.set_title("Probability density  |u(r)|²", color="white")
+ax4.plot(r_num, ue_num**2, color="#ff6ec7", lw=2, label="|uₑ|²  electron channel")
+ax4.plot(r_num, uc_num**2, color="#69ff47", lw=2, label="|u_c|²  cavity channel")
+ax4.plot(r_num, ue_num**2 + uc_num**2, color="#ffd740", lw=1.5, ls="--", label="total |u|²")
+ax4.axhline(0, color="#444", lw=0.6)
+ax4.set_xlabel("r  (nm)")
+ax4.set_ylabel("|u|²")
+ax4.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
+
+fig3.suptitle("Numerical solution inside Region I  (u′(0) = |e⟩ injection)",
+              color="white", fontsize=13, y=1.01)
+fig3.tight_layout()
+st.pyplot(fig3, use_container_width=True)
+plt.close(fig3)
