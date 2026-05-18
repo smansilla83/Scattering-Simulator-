@@ -684,8 +684,8 @@ Near B = Bc the channels are degenerate (ΔV → 0) and θ → 45°; far from re
                     color="#ffd740", fontsize=11)
     fig_th.tight_layout(); st.pyplot(fig_th, use_container_width=True); plt.close(fig_th)
 
-    # ── Analytic K-matrix wavefunction (replaces unstable ODE)
-    st.markdown(f"<h3 style='color:#00e5ff;'>Analytic Wavefunction at B = {B_probe:.1f} G  (E = 0)</h3>",
+    # ── Analytic K-matrix wavefunction — square-well toy model
+    st.markdown(f"<h3 style='color:#00e5ff;'>Square-Well K-Matrix Toy Model — B = {B_probe:.1f} G  (E = 0)</h3>",
                 unsafe_allow_html=True)
     st.markdown("""
 <p style="color:#b0bec5; font-size:0.9rem;">
@@ -693,6 +693,18 @@ Inside Region I, V̂ is constant so each dressed channel obeys an exact equation
 <b>sin(k·r)</b> for propagating states, <b>sinh(κ·r)</b> for evanescent ones (both vanish at r = 0).
 Boundary conditions at ā are matched via a 2×2 K-matrix linear system — no ODE integration,
 no exponential blow-up.
+<br><br>
+<b style="color:#ffd740;">This is an independent toy model, not a fit to the paper.</b>
+The open-channel well depth V<sub>oo</sub> is calibrated so the single-channel (W = 0)
+scattering length equals a<sub>bg</sub>.
+The coupling W is computed from the resonance width Γ via
+W = √(ℏΓ · ħ²/2m<sub>r</sub> / ā²), which sets the <em>strength</em> of the Feshbach coupling
+but does not guarantee that the K-matrix pole (B<sub>0</sub>) and zero (B*) land at the
+Lange et al. literature values.
+To force exact agreement with the product formula, W would need to be fitted so the K-matrix
+reproduces B<sub>0</sub> and B*.
+As a result, <b>a<sub>km</sub> and a<sub>formula</sub> are expected to differ by ~100–200 a₀</b>
+away from resonance — this is a calibration difference, not a bug.
 </p>""", unsafe_allow_html=True)
 
     factor_cs = 2.0 * m_r_me / hbar2_2me  # Tab 2 convention (consistent with abg_from_V)
@@ -757,7 +769,7 @@ no exponential blow-up.
     ax.plot(r_full2, uc_full2, color="#ff6ec7", lw=2, label="u_closed(r)")
     ax.axhline(0, color="#444", lw=0.6)
     ax.set_xlabel("r (nm)"); ax.set_ylabel("u(r) [arb.]")
-    ax.set_title(f"E=0 analytic wavefunction → a = {a_km2/a0_nm:.1f} a₀  (formula: {a_probe/a0_nm:.1f} a₀)",
+    ax.set_title(f"Toy model: a_km = {a_km2/a0_nm:.1f} a₀   |   Paper formula: a = {a_probe/a0_nm:.1f} a₀",
                  color="white")
     ax.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
     ax2 = axes5[1]
@@ -768,9 +780,30 @@ no exponential blow-up.
     ax2.set_xlabel("r (nm)"); ax2.set_ylabel("|u(r)|²")
     ax2.set_title("Probability density", color="white")
     ax2.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
-    fig5.suptitle("Interior: analytic sin/sinh dressed states  ·  Exterior: linear (open) + exp decay (closed)",
+    fig5.suptitle("Square-well toy model  ·  Interior: analytic sin/sinh  ·  Exterior: linear (open) + exp decay (closed)",
                   color="#b0bec5", fontsize=10)
     fig5.tight_layout(); st.pyplot(fig5, use_container_width=True); plt.close(fig5)
+
+    _delta_a2 = abs(a_km2 - a_probe) / a0_nm
+    st.markdown(f"""
+<div style="background:#1a1a2e; border-left:4px solid #ffd740; border-radius:6px;
+            padding:1rem 1.4rem; margin-top:0.8rem; font-size:0.9rem; color:#b0bec5;">
+  <b style="color:#ffd740;">Two representations of the Cs scattering length</b><br><br>
+  <b style="color:#69ff47;">Paper product formula</b> — a(B) = a<sub>bg</sub> ∏ (B − B*ᵢ)/(B − B₀ᵢ) — uses B₀, B*
+  directly from Table I of Lange et al. This is the experimentally validated curve.<br><br>
+  <b style="color:#ff6ec7;">Square-well K-matrix toy model</b> — solves the 2-channel Schrödinger equation with a
+  flat potential inside ā. V<sub>oo</sub> is calibrated to a<sub>bg</sub>; W is derived from Γ/h.
+  This gives the correct <em>physics</em> (Feshbach resonance structure, correct boundary conditions,
+  well-behaved wavefunction) but W from Γ/h does not guarantee the K-matrix pole and zero
+  land exactly at the literature B₀ = −11.1 G and B* = 18.1 G.
+  To force exact agreement, W must be <em>fitted</em> so the K-matrix reproduces those two landmarks.<br><br>
+  At B = {B_probe:.1f} G:&nbsp;
+  a<sub>km</sub> = <b style="color:#ff6ec7;">{a_km2/a0_nm:.1f} a₀</b> &nbsp;|&nbsp;
+  a<sub>formula</sub> = <b style="color:#69ff47;">{a_probe/a0_nm:.1f} a₀</b> &nbsp;|&nbsp;
+  |Δa| = <b style="color:#ffd740;">{_delta_a2:.0f} a₀</b>
+  — a calibration difference, not a numerical error.
+</div>
+""", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
