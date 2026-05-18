@@ -54,7 +54,7 @@ st.sidebar.header("Interactive Simulator")
 st.sidebar.markdown("**Region I potential** *(r < ā)*")
 Ve     = st.sidebar.slider("Ve  (eV) — open-channel depth",    -10.0, 10.0,  2.0,  0.1)
 Vc     = st.sidebar.slider("Vc  (eV) — closed-channel depth",  -10.0, 10.0, -2.0,  0.1)
-hOmega = st.sidebar.slider("ℏΩ  (eV) — interchannel coupling",   0.0, 10.0,  1.0,  0.05)
+hOmega = st.sidebar.slider("W = ℏΩ  (eV) — interchannel coupling",   0.0, 10.0,  1.0,  0.05)
 a_bar  = st.sidebar.slider("ā  (nm) — region boundary",           0.5,  5.0,  2.0,  0.1)
 
 with st.sidebar.expander("Parameter guide"):
@@ -63,8 +63,10 @@ with st.sidebar.expander("Parameter guide"):
 
 **Vc** — well depth of the bare closed channel |c⟩. Diagonal element $V_{cc} = -V_c$.
 
-**ℏΩ** — off-diagonal coupling. Only ΔV and ℏΩ determine the mixing angle θ and
-eigenvectors; the common offset shifts eigenvalues only.
+**ℏΩ = W** — off-diagonal interchannel coupling. In the Lange et al. paper this is called **W**;
+in quantum optics / cavity QED it is written ℏΩ where Ω is the Rabi frequency. Same quantity,
+different notation. Only ΔV and W determine the mixing angle θ and eigenvectors; the common
+offset shifts eigenvalues only.
 
 **ā** — radius of Region I. Outside this, the potential is zero.
 """)
@@ -83,10 +85,11 @@ st.sidebar.markdown(f"""
 B_probe = st.sidebar.slider("B (G) — probe field", 20.0, 62.0, 30.0, 0.1)
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "⟐ Interactive Simulator",
     "⟐ Paper Results (Lange et al.)",
     "⟐ Theory & Assumptions",
+    "⟐ van der Waals Extension",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -718,7 +721,7 @@ allowing exact analytic diagonalisation. The bare-channel potential matrix is:
 - **V_oo = −V_open** — open-channel well depth (attractive). Fixed by requiring the single-channel
   scattering length equals a_bg.
 - **V_cc(B) = δμ(B − Bc)** — closed-channel threshold, shifted by the magnetic detuning.
-- **W** — interchannel coupling (off-diagonal), related to the resonance width Γ.
+- **W = ℏΩ** — interchannel coupling (off-diagonal), related to the resonance width Γ. The paper calls it W; quantum optics calls the same quantity ℏΩ where Ω is the Rabi frequency. Both notations refer to the identical off-diagonal matrix element.
 """)
     st.markdown("The magnetic detuning for each resonance i:")
     st.latex(r"\delta_i(B) = \delta\mu_i \cdot \mu_B \cdot (B - B_{c,i})")
@@ -858,3 +861,224 @@ V_pole,1 in the first branch. The root is found numerically with `scipy.optimize
 | d-wave | 47.78 | 47.944 | 47.962 | 1.15 | 0.065 |
 | g-wave | 53.449 | 53.457 | 53.458 | 1.50 | 0.0042 |
 """)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — van der Waals Extension
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab4:
+    st.markdown("<h2 style='color:#00e5ff;'>van der Waals Extension</h2>",
+                unsafe_allow_html=True)
+    st.markdown("""
+<p style="color:#b0bec5;">
+The Lange et al. square-well is a convenient fiction: it is flat inside ā so that V̂ can be
+diagonalised analytically. The real Cs–Cs interaction has a long-range
+<b style="color:#ff6ec7;">−C₆/r⁶</b> tail. Here we replace the square-well with a van der Waals
+potential, solve the two-channel ODE numerically, and compare a(B) with the paper formula.
+The channel matrix becomes:
+</p>
+""", unsafe_allow_html=True)
+    st.latex(r"\hat{V}(r) = \begin{pmatrix} -C_6/r^6 & W \\ W & -C_6/r^6 + \delta(B) \end{pmatrix}")
+    st.markdown("""
+<p style="color:#b0bec5; margin-top:0.5rem;">
+Both channels share the <b style="color:#fff;">same</b> long-range tail; only the threshold of the
+closed channel is shifted by δ(B). W is the same fitted constant as before (from Γ_s).
+A hard wall at r_min replaces the unphysical short-range core.
+</p>
+""", unsafe_allow_html=True)
+
+    # ── Parameters ────────────────────────────────────────────────────────────
+    col_sl1, col_sl2 = st.columns(2)
+    with col_sl1:
+        C6_au    = st.slider("C₆ (atomic units)  — Cs ≈ 6890", 1000, 15000, 6890, 10)
+        r_min_a0 = st.slider("r_min (a₀) — hard-wall radius",  5,    40,    20,    1)
+    with col_sl2:
+        n_B_vdw  = st.slider("B-sweep points  (more = slower)", 30, 150, 60, 10)
+        st.markdown(f"""
+<div style="background:#111827; border-radius:8px; padding:0.9rem 1.2rem; font-size:0.9rem; color:#fff;">
+<b style="color:#ffd740;">Derived quantities</b><br>
+C₆ = {C6_au} au<br>
+r_min = {r_min_a0} a₀ = {r_min_a0*a0_nm*1000:.2f} pm<br>
+l_vdW = ½(C₆/[ħ²/2mᵣ])^(1/4) = {0.5*(C6_au*27.2114*a0_nm**6/hbar2_2mr)**0.25/a0_nm:.1f} a₀<br>
+Paper ā = 95.7 a₀
+</div>
+""", unsafe_allow_html=True)
+
+    # Convert C6 to eV·nm⁶
+    C6_eV   = C6_au * 27.2114 * a0_nm**6    # eV·nm⁶
+    r_min_v = r_min_a0 * a0_nm               # nm
+    r_max_v = 6.0 * a_bar_cs                 # nm
+    _hGamma_s_v = TABLE['s-wave']['Gamma'] * 1e6 * h_eVs
+    _W_eV_v     = np.sqrt(_hGamma_s_v * hbar2_2mr / a_bar_cs**2)
+    _factor_v   = m_r_me / hbar2_2me
+
+    # ── Potential plot ────────────────────────────────────────────────────────
+    st.markdown("<h3 style='color:#ffd740;'>van der Waals Potential vs Square-Well</h3>",
+                unsafe_allow_html=True)
+    r_show  = np.linspace(r_min_v, 2.5 * a_bar_cs, 1000)
+    V_vdw_r = -C6_eV / r_show**6
+
+    _delta_s_probe = TABLE['s-wave']['dmu'] * muB_eVperG * (B_probe - TABLE['s-wave']['Bc'])
+    _V_pole_v  = (np.pi/2)**2 * hbar2_2me / (2 * m_r_me * a_bar_cs**2)
+
+    try:
+        _V_open_v = brentq(lambda V: (lambda k, ka: a_bar_cs*(1-np.tan(ka)/ka)
+                                      if abs(np.cos(ka))>1e-12 else np.inf)(
+                               np.sqrt(2*m_r_me*V/hbar2_2me),
+                               np.sqrt(2*m_r_me*V/hbar2_2me)*a_bar_cs) - a_bg,
+                           _V_pole_v*1.001, _V_pole_v*5.0)
+    except Exception:
+        _V_open_v = V_pole_1 * 2.0
+
+    fig_vp, ax_vp = plt.subplots(figsize=(13, 5))
+    fig_vp.patch.set_facecolor("#0e1117"); ax_vp.set_facecolor("#0e1117")
+    ax_vp.tick_params(colors="white", labelsize=11)
+    ax_vp.xaxis.label.set_color("white"); ax_vp.yaxis.label.set_color("white")
+    for sp in ax_vp.spines.values(): sp.set_edgecolor("#333")
+
+    ax_vp.plot(r_show / a0_nm, V_vdw_r * 1e3, color="#ff6ec7", lw=2.5, label="vdW  −C₆/r⁶")
+    ax_vp.axhline(-_V_open_v * 1e3, color="#69ff47", lw=2, ls="--",
+                  label=f"Square-well  V_oo = {_V_open_v*1e9:.2f} neV")
+    ax_vp.axvline(a_bar_cs / a0_nm, color="#ffd740", lw=1.5, ls="--", alpha=0.7, label="ā = 95.7 a₀")
+    ax_vp.axvline(r_min_a0, color="#aaa", lw=1, ls=":", alpha=0.6, label=f"r_min = {r_min_a0} a₀")
+    ax_vp.set_xlim(r_min_a0 * 0.8, 2.5 * a_bar_cs / a0_nm)
+    ylo = max(V_vdw_r.min() * 1e3, -50.0)  # clip extreme near-r values
+    ax_vp.set_ylim(ylo, 2.0)
+    ax_vp.set_xlabel("r  (a₀)", fontsize=12); ax_vp.set_ylabel("V(r)  (meV)", fontsize=12)
+    ax_vp.set_title("Open-channel potential: vdW vs square-well", color="white", fontsize=12)
+    ax_vp.legend(fontsize=10, framealpha=0.2, labelcolor="white",
+                 facecolor="#0e1117", edgecolor="#444")
+    fig_vp.tight_layout(); st.pyplot(fig_vp, use_container_width=True); plt.close(fig_vp)
+
+    # ── B sweep ───────────────────────────────────────────────────────────────
+    st.markdown("<h3 style='color:#ffd740;'>a(B) — vdW two-channel ODE vs paper formula</h3>",
+                unsafe_allow_html=True)
+
+    @st.cache_data(show_spinner=False)
+    def compute_vdw_sweep(C6_eV_key, r_min_key, r_max_key, W_key, n_B_key):
+        B_sw   = np.linspace(20.0, 62.0, n_B_key)
+        a_sw   = np.full(n_B_key, np.nan)
+        factor = m_r_me / hbar2_2me
+        for i, B in enumerate(B_sw):
+            ds = TABLE['s-wave']['dmu'] * muB_eVperG * (B - TABLE['s-wave']['Bc'])
+            def ode_v(r, y, ds=ds):
+                uo, uc, puo, puc = y
+                Vl = -C6_eV_key / r**6
+                return [puo, puc,
+                        factor * ((Vl)      * uo + W_key * uc),
+                        factor * ((Vl + ds) * uc + W_key * uo)]
+            try:
+                sol = solve_ivp(ode_v, [r_min_key, r_max_key],
+                                [0., 0., 1., 0.],
+                                method='RK45', rtol=1e-7, atol=1e-9)
+                uo_e = sol.y[0,-1]; puo_e = sol.y[2,-1]
+                if abs(puo_e) > 1e-20:
+                    a_sw[i] = sol.t[-1] - uo_e / puo_e
+            except Exception:
+                pass
+        return B_sw, a_sw
+
+    with st.spinner(f"Solving vdW ODE for {n_B_vdw} field values …"):
+        B_vdw, a_vdw_arr = compute_vdw_sweep(
+            C6_eV, r_min_v, r_max_v, float(_W_eV_v), n_B_vdw)
+
+    # Paper formula on same grid
+    def a_of_B_paper(B):
+        B = np.asarray(B, dtype=float); res = np.ones_like(B)
+        for r in TABLE.values():
+            dn = B - r['B0']; nm = B - r['Bstar']
+            res = np.where(np.abs(dn) > 0.005, res * nm / dn, np.nan)
+        return a_bg * res
+
+    a_paper_coarse = a_of_B_paper(B_vdw)
+
+    fig_cmp, ax_cmp = plt.subplots(figsize=(14, 6))
+    fig_cmp.patch.set_facecolor("#0e1117"); ax_cmp.set_facecolor("#0e1117")
+    ax_cmp.tick_params(colors="white", labelsize=11)
+    ax_cmp.xaxis.label.set_color("white"); ax_cmp.yaxis.label.set_color("white")
+    for sp in ax_cmp.spines.values(): sp.set_edgecolor("#333")
+
+    clip = 8000
+    ax_cmp.plot(B_vdw, np.clip(a_paper_coarse / a0_nm, -clip, clip),
+                color="#00e5ff", lw=2, label="Square-well product formula (paper)")
+    ax_cmp.plot(B_vdw, np.clip(a_vdw_arr / a0_nm, -clip, clip),
+                color="#ff6ec7", lw=2, ls="--", marker="o", ms=3,
+                label=f"vdW ODE  (C₆={C6_au} au, r_min={r_min_a0} a₀)")
+    ax_cmp.axhline(0, color="#555", lw=0.8, ls="--")
+    ax_cmp.axhline(a_bg / a0_nm, color="#aaaaff", lw=1, ls=":", alpha=0.6,
+                   label=f"a_bg = 1875 a₀")
+    for nm_r, r in TABLE.items():
+        ax_cmp.axvline(r['B0'], color="#ffd740", lw=1, ls="--", alpha=0.4)
+    ax_cmp.set_xlim(20, 62); ax_cmp.set_ylim(-clip, clip)
+    ax_cmp.set_xlabel("Magnetic field B (G)", fontsize=12)
+    ax_cmp.set_ylabel("Scattering length a  (a₀)", fontsize=12)
+    ax_cmp.set_title("a(B): van der Waals ODE vs square-well formula", color="white", fontsize=12)
+    ax_cmp.legend(fontsize=10, framealpha=0.2, labelcolor="white",
+                  facecolor="#0e1117", edgecolor="#444")
+    fig_cmp.tight_layout(); st.pyplot(fig_cmp, use_container_width=True); plt.close(fig_cmp)
+
+    # ── Single-B wavefunction ─────────────────────────────────────────────────
+    st.markdown(f"<h3 style='color:#ffd740;'>Wavefunction at B = {B_probe:.1f} G  (vdW ODE)</h3>",
+                unsafe_allow_html=True)
+
+    _ds_probe = TABLE['s-wave']['dmu'] * muB_eVperG * (B_probe - TABLE['s-wave']['Bc'])
+
+    def ode_vdw_probe(r, y):
+        uo, uc, puo, puc = y
+        Vl = -C6_eV / r**6
+        return [puo, puc,
+                _factor_v * (Vl       * uo + _W_eV_v * uc),
+                _factor_v * ((Vl + _ds_probe) * uc + _W_eV_v * uo)]
+
+    r_eval_vp = np.linspace(r_min_v, r_max_v, 4000)
+    sol_vp    = solve_ivp(ode_vdw_probe, [r_min_v, r_max_v], [0., 0., 1., 0.],
+                          t_eval=r_eval_vp, method='RK45', rtol=1e-10, atol=1e-12)
+
+    uo_vp = sol_vp.y[0]; uc_vp = sol_vp.y[1]; r_vp = sol_vp.t
+    uo_end_v = sol_vp.y[0,-1]; puo_end_v = sol_vp.y[2,-1]
+    a_vdw_probe = r_vp[-1] - uo_end_v/puo_end_v if abs(puo_end_v) > 1e-20 else np.nan
+
+    fig_wf, axes_wf = plt.subplots(1, 2, figsize=(16, 5))
+    fig_wf.patch.set_facecolor("#0e1117")
+    for ax in axes_wf:
+        ax.set_facecolor("#0e1117"); ax.tick_params(colors="white", labelsize=10)
+        ax.xaxis.label.set_color("white"); ax.yaxis.label.set_color("white")
+        ax.title.set_color("white")
+        for sp in ax.spines.values(): sp.set_edgecolor("#333")
+        ax.axvline(a_bar_cs / a0_nm, color="#ffd740", lw=1.2, ls="--", alpha=0.5, label="ā")
+        ax.axvline(r_min_a0, color="#aaa", lw=1.0, ls=":", alpha=0.5, label="r_min")
+
+    ax_w = axes_wf[0]
+    ax_w.plot(r_vp / a0_nm, uo_vp, color="#69ff47", lw=2, label="u_open")
+    ax_w.plot(r_vp / a0_nm, uc_vp, color="#ff6ec7", lw=2, label="u_closed")
+    ax_w.axhline(0, color="#444", lw=0.6)
+    ax_w.set_xlabel("r  (a₀)"); ax_w.set_ylabel("u(r)  [arb.]")
+    ax_w.set_title(f"vdW wavefunction → a = {a_vdw_probe/a0_nm:.1f} a₀  "
+                   f"(paper: {a_of_B_paper(B_probe)/a0_nm:.1f} a₀)",
+                   color="white")
+    ax_w.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
+
+    ax_w2 = axes_wf[1]
+    ax_w2.plot(r_vp / a0_nm, uo_vp**2, color="#69ff47", lw=2, label="|u_open|²")
+    ax_w2.plot(r_vp / a0_nm, uc_vp**2, color="#ff6ec7", lw=2, label="|u_closed|²")
+    ax_w2.plot(r_vp / a0_nm, uo_vp**2 + uc_vp**2, color="#ffd740", lw=1.5, ls="--", label="total")
+    ax_w2.axhline(0, color="#444", lw=0.6)
+    ax_w2.set_xlabel("r  (a₀)"); ax_w2.set_ylabel("|u(r)|²")
+    ax_w2.set_title("Probability density", color="white")
+    ax_w2.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
+
+    fig_wf.tight_layout(); st.pyplot(fig_wf, use_container_width=True); plt.close(fig_wf)
+
+    st.markdown("""
+<div style="background:#111827; border-radius:8px; padding:1rem 1.4rem; margin-top:1rem;">
+<p style="color:#ffd740; font-weight:bold; margin:0 0 0.5rem 0;">What the comparison tells you</p>
+<ul style="color:#b0bec5; margin:0; padding-left:1.2rem; line-height:1.9;">
+  <li>Where the two curves <b style="color:#fff;">agree</b>: the square-well captures the correct
+      resonance positions — the physics is set by the long-range scale ā, not the well shape.</li>
+  <li>Where they <b style="color:#fff;">differ</b>: near-resonance curvature and the value of a_bg
+      depend on r_min (the short-range phase). Changing r_min shifts which branch of the
+      scattering length you land on.</li>
+  <li>The vdW length <b style="color:#ce93d8;">l_vdW = ½(C₆/[ħ²/2mᵣ])^(1/4)</b> sets the
+      natural scale — the paper's ā ≈ 95.7 a₀ is precisely this quantity for Cs.</li>
+</ul>
+</div>
+""", unsafe_allow_html=True)
