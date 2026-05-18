@@ -18,9 +18,9 @@ st.markdown("This gives the dressed eigenstates $|{+}\\rangle$ and $|{-}\\rangle
 
 # ── Sidebar inputs ─────────────────────────────────────────────────────────────
 st.sidebar.header("Parameters")
-Ve     = st.sidebar.slider("Ve  (eV)",      min_value=-10.0, max_value=10.0, value=2.0,  step=0.1)
-Vc     = st.sidebar.slider("Vc  (eV)",      min_value=-10.0, max_value=10.0, value=-2.0, step=0.1)
-hOmega = st.sidebar.slider("ℏΩ  (eV)",     min_value=0.0,   max_value=10.0, value=1.0,  step=0.05)
+Ve     = st.sidebar.slider("Ve  (eV)",  min_value=-10.0, max_value=10.0, value=2.0,  step=0.1)
+Vc     = st.sidebar.slider("Vc  (eV)",  min_value=-10.0, max_value=10.0, value=-2.0, step=0.1)
+hOmega = st.sidebar.slider("ℏΩ  (eV)", min_value=0.0,   max_value=10.0, value=1.0,  step=0.05)
 
 # ── Derived quantities ─────────────────────────────────────────────────────────
 Delta_V   = (Ve - Vc) / 2.0
@@ -32,16 +32,19 @@ sin_t     = np.sin(theta)
 lam_plus  = -(Ve + Vc) / 2.0 + R
 lam_minus = -(Ve + Vc) / 2.0 - R
 
-# NumPy cross-check
 V_matrix = np.array([
     [-(Ve + Vc) / 2.0 + Delta_V, hOmega],
     [hOmega,                      -(Ve + Vc) / 2.0 - Delta_V],
 ])
 evals_np, evecs_np = np.linalg.eigh(V_matrix)
 
-# ── Analytical results ─────────────────────────────────────────────────────────
+# ── Analytical results — landscape (3 columns) ─────────────────────────────────
 st.subheader("Analytical results")
-st.markdown(f"""
+ca, cb, cc = st.columns(3)
+
+with ca:
+    st.markdown("**Derived quantities**")
+    st.markdown(f"""
 | Quantity | Value |
 |---|---|
 | $\\Delta_V = (V_e - V_c)/2$ | **{Delta_V:.4f} eV** |
@@ -52,18 +55,20 @@ st.markdown(f"""
 | $\\lambda_-$ | **{lam_minus:.4f} eV** |
 """)
 
-st.subheader("Eigenvectors")
-st.latex(
-    rf"|{{+}}\rangle = \cos\theta\,|e\rangle + \sin\theta\,|c\rangle"
-    rf" = {cos_t:+.4f}\,|e\rangle {sin_t:+.4f}\,|c\rangle"
-)
-st.latex(
-    rf"|{{-}}\rangle = -\sin\theta\,|e\rangle + \cos\theta\,|c\rangle"
-    rf" = {-sin_t:+.4f}\,|e\rangle {cos_t:+.4f}\,|c\rangle"
-)
+with cb:
+    st.markdown("**Eigenvectors**")
+    st.latex(
+        rf"|{{+}}\rangle = \cos\theta\,|e\rangle + \sin\theta\,|c\rangle"
+        rf" = {cos_t:+.4f}\,|e\rangle {sin_t:+.4f}\,|c\rangle"
+    )
+    st.latex(
+        rf"|{{-}}\rangle = -\sin\theta\,|e\rangle + \cos\theta\,|c\rangle"
+        rf" = {-sin_t:+.4f}\,|e\rangle {cos_t:+.4f}\,|c\rangle"
+    )
 
-st.subheader("NumPy verification")
-st.markdown(f"""
+with cc:
+    st.markdown("**NumPy verification**")
+    st.markdown(f"""
 | State | $|e\\rangle$ | $|c\\rangle$ | Eigenvalue |
 |---|---|---|---|
 | $\\lambda_-$ | `{evecs_np[0,0]:+.4f}` | `{evecs_np[1,0]:+.4f}` | `{evals_np[0]:.4f} eV` |
@@ -160,10 +165,10 @@ bare_e = -(Ve + Vc) / 2.0 + Delta_V
 bare_c = -(Ve + Vc) / 2.0 - Delta_V
 
 levels = [
-    (bare_e,   "bare $|e\\rangle$",    "#ef9a9a", "--"),
-    (bare_c,   "bare $|c\\rangle$",    "#a5d6a7", "--"),
-    (lam_plus, "$\\lambda_+$ dressed", "#4fc3f7", "-"),
-    (lam_minus,"$\\lambda_-$ dressed", "#ffb74d", "-"),
+    (bare_e,    "bare $|e\\rangle$",    "#ef9a9a", "--"),
+    (bare_c,    "bare $|c\\rangle$",    "#a5d6a7", "--"),
+    (lam_plus,  "$\\lambda_+$ dressed", "#4fc3f7", "-"),
+    (lam_minus, "$\\lambda_-$ dressed", "#ffb74d", "-"),
 ]
 
 all_vals = [v for v, *_ in levels]
@@ -183,14 +188,12 @@ ax3.xaxis.set_visible(False)
 ax3.set_xlim(0, 1)
 ax3.set_ylim(ymin - pad, ymax + pad)
 
-# Draw lines and collect (y_actual, y_label, label, color) resolving overlaps
 min_gap = pad * 0.35
 sorted_levels = sorted(levels, key=lambda x: x[0])
-placed = []   # (y_label, label, col)
+placed = []
 
 for y, label, col, ls in sorted_levels:
     ax3.axhline(y, color=col, lw=2.5, ls=ls, alpha=0.9)
-    # find a label y that doesn't collide with already-placed ones
     y_lbl = y
     for py, *_ in placed:
         if abs(y_lbl - py) < min_gap:
@@ -204,7 +207,6 @@ for y_lbl, label, col in placed:
         transform=ax3.get_yaxis_transform(),
         bbox=dict(boxstyle="round,pad=0.2", facecolor="#0e1117", edgecolor="none", alpha=0.8),
     )
-    ax3.yaxis.set_tick_params(labelsize=10, labelcolor="white")
 
 fig2.tight_layout()
 st.pyplot(fig2)
