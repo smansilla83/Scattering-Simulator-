@@ -1220,51 +1220,44 @@ W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
 </div>""", unsafe_allow_html=True)
 
     @st.cache_data(show_spinner=False)
-    def compute_vdw_sweep(C6_eV_key, r_min_key, r_max_key, W_s_key, n_B_key):
-        # 2-channel ODE (open + s-wave closed), matching the paper's 2-channel model.
-        # Sweep starts at -15 G so the s-wave resonance at B0 = -11.1 G is visible.
-        # Fine B-grid near B0_s and B*_s to resolve the pole and zero-crossing.
-        _B0 = TABLE['s-wave']['B0']
-        B_coarse      = np.linspace(-15.0, 62.0, n_B_key + 40)
-        B_fine_pole   = np.linspace(_B0 - 0.8,   _B0 + 0.8,   80)
-        B_near_pole   = np.concatenate([
-            np.linspace(_B0 - 0.05,  _B0 - 0.002, 40),
-            np.linspace(_B0 + 0.002, _B0 + 0.05,  40),
-        ])
-        B_very_fine   = np.concatenate([
-            np.linspace(_B0 - 0.002, _B0 - 5e-5,  50),
-            np.linspace(_B0 + 5e-5,  _B0 + 0.002, 50),
-        ])
-        B_fine_zero   = np.linspace(TABLE['s-wave']['Bstar'] - 0.8,
-                                    TABLE['s-wave']['Bstar'] + 0.8, 60)
-        B_sw = np.sort(np.unique(np.concatenate(
-            [B_coarse, B_fine_pole, B_near_pole, B_very_fine, B_fine_zero])))
-        B_sw = B_sw[(B_sw >= -15.0) & (B_sw <= 62.0)]
-
-        a_sw   = np.full(len(B_sw), np.nan)
-        factor = m_r_me / hbar2_2me
-        for i, B in enumerate(B_sw):
+    def compute_vdw_sweep_on_grid(C6_eV_key, r_min_key, r_max_key, W_key, B_grid_tuple):
+        B_grid = np.array(B_grid_tuple, dtype=float)
+        a_vals = []
+        fac    = m_r_me / hbar2_2me
+        for B in B_grid:
             ds = TABLE['s-wave']['dmu'] * muB_eVperG * (B - TABLE['s-wave']['Bc'])
-            def ode_v(r, y, ds=ds):
-                uo, uc, puo, puc = y
+            def _rhs(r, y, ds=ds):
+                uo, uc, po, pc = y
                 Vl = -C6_eV_key / r**6
-                return [puo, puc,
-                        factor * (Vl*uo + W_s_key*uc),
-                        factor * ((Vl+ds)*uc + W_s_key*uo)]
+                return [po, pc,
+                        fac * (Vl*uo + W_key*uc),
+                        fac * ((Vl+ds)*uc + W_key*uo)]
             try:
-                sol = solve_ivp(ode_v, [r_min_key, r_max_key],
-                                [0., 0., 1., 0.],
-                                method='LSODA', rtol=1e-8, atol=1e-10)
-                uo_e = sol.y[0,-1]; puo_e = sol.y[2,-1]
-                if abs(puo_e) > 1e-20:
-                    a_sw[i] = sol.t[-1] - uo_e / puo_e
+                sol = solve_ivp(_rhs, [r_min_key, r_max_key], [0., 0., 1., 0.],
+                                method='LSODA', t_eval=[r_max_key],
+                                rtol=1e-7, atol=1e-9)
+                if sol.success and sol.y.shape[1] > 0:
+                    uo_e, po_e = sol.y[0, -1], sol.y[2, -1]
+                    a_vals.append(r_max_key - uo_e / po_e if abs(po_e) > 1e-14
+                                  else np.sign(uo_e) * np.inf)
+                else:
+                    a_vals.append(np.nan)
             except Exception:
-                pass
-        return B_sw, a_sw
+                a_vals.append(np.nan)
+        return B_grid, np.array(a_vals)
 
-    with st.spinner(f"Solving vdW ODE …"):
-        B_vdw, a_vdw_arr = compute_vdw_sweep(
-            C6_eV, r_min_v, r_max_v, float(_W_eV_v), n_B_vdw)
+    # Dense B-grid: 450 points in 0.5 G around B₀ to resolve the pole
+    _B0_v = TABLE['s-wave']['B0']
+    _B_grid_v = np.concatenate([
+        np.linspace(-15.0,      _B0_v - 0.25, 90),
+        np.linspace(_B0_v - 0.25, _B0_v + 0.25, 450),
+        np.linspace(_B0_v + 0.25, 62.0,        160),
+    ])
+    _B_grid_v = np.sort(np.unique(_B_grid_v))
+
+    with st.spinner("Solving vdW ODE …"):
+        B_vdw, a_vdw_arr = compute_vdw_sweep_on_grid(
+            C6_eV, r_min_v, r_max_v, float(_W_eV_v), tuple(_B_grid_v))
 
     # Paper formula on same grid
     def a_of_B_paper(B):
@@ -1283,16 +1276,13 @@ W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
     for sp in ax_cmp.spines.values(): sp.set_edgecolor("#333")
 
     clip = 8000
-    def _nan_clip(arr, c):
-        return np.where(np.abs(arr) > c, np.nan, arr)
-
-    ax_cmp.plot(B_vdw, _nan_clip(a_paper_coarse / a0_nm, clip),
-                color="#00e5ff", lw=2,
-                label="Lange et al. product formula — all 3 resonances (validated)")
     _W_label = (f"fitted (pole at B₀)" if (_use_fitted_W and _W_fit_v is not None)
                 else f"α={_W_alpha_v:.1f}×W_Γ")
-    ax_cmp.plot(B_vdw, _nan_clip(a_vdw_arr / a0_nm, clip),
-                color="#ff6ec7", lw=2, ls="--", marker="o", ms=3,
+    ax_cmp.plot(B_vdw, np.clip(a_paper_coarse / a0_nm, -clip, clip),
+                color="#00e5ff", lw=2,
+                label="Lange et al. product formula — all 3 resonances (validated)")
+    ax_cmp.plot(B_vdw, np.clip(a_vdw_arr / a0_nm, -clip, clip),
+                color="#ff6ec7", lw=2, marker=".", ms=2,
                 label=f"vdW ODE — s-wave 2-ch (C₆={C6_au} au, r_min={r_min_a0} a₀, W: {_W_label})")
     ax_cmp.axhline(0, color="#555", lw=0.8, ls="--")
     ax_cmp.axhline(a_bg / a0_nm, color="#aaaaff", lw=1, ls=":", alpha=0.6,
@@ -2008,6 +1998,66 @@ with tab6:
     _ax.tick_params(colors="white")
     for _sp in _ax.spines.values(): _sp.set_edgecolor("#444")
     st.pyplot(_fig); plt.close(_fig)
+
+    # ── Resonance demo: Breit-Wigner shape via detuning sliders ───────────────
+    st.markdown("---")
+    st.markdown("<h3 style='color:#69ff47;'>Resonance demo — Breit-Wigner scattering length</h3>",
+                unsafe_allow_html=True)
+    st.markdown("""
+<div style="background:#111827; border-left:4px solid #69ff47; border-radius:6px;
+            padding:0.6rem 1rem; font-size:0.85rem; color:#b0bec5; margin-bottom:0.6rem;">
+  A Feshbach resonance gives
+  <b style="color:#fff;">a(δ) = a<sub>bg</sub> (1 − Δ / (δ − δ<sub>pole</sub>))</b>.
+  Use the sliders to place the pole and set the resonance width Δ.
+  This is illustrative — to match the Cs s-wave pole at B₀ = −11.1 G, map
+  δ(B) = δμ · μ<sub>B</sub> · (B − B<sub>c</sub>) and fit W to that pole.
+</div>""", unsafe_allow_html=True)
+
+    _dr1, _dr2 = st.columns(2)
+    with _dr1:
+        _d_pole6 = st.slider("Pole position δ_pole  (neV)", -60.0, 60.0, 5.0, 0.5,
+                             key="demo_dpole")
+        _width6  = st.slider("Resonance width Δ  (neV)",     0.5,  50.0,  8.0, 0.5,
+                             key="demo_width")
+    with _dr2:
+        _abg6_d  = a_bg / a0_nm   # use Cs a_bg in a₀
+        st.markdown(f"""
+<div style="background:#111827; border-radius:8px; padding:0.8rem 1rem;
+            font-size:0.88rem; color:#b0bec5;">
+  <b style="color:#ffd740;">a_bg</b> = {_abg6_d:.0f} a₀  (Cs background)<br>
+  <b style="color:#ff6ec7;">pole</b> at δ = {_d_pole6:.1f} neV<br>
+  <b style="color:#69ff47;">zero</b> at δ = {_d_pole6 + _width6:.1f} neV  (δ_pole + Δ)<br>
+  <span style="color:#888; font-size:0.8rem;">Δ &gt; 0 → zero above pole (Cs s-wave).<br>
+  Δ &lt; 0 → zero below pole.</span>
+</div>""", unsafe_allow_html=True)
+
+    _delta_demo = np.linspace(-80.0, 80.0, 3000)
+    _denom_d = _delta_demo - _d_pole6
+    _denom_d = np.where(np.abs(_denom_d) < 1e-9,
+                        np.sign(_denom_d + 1e-9) * 1e-9, _denom_d)
+    _a_demo6 = _abg6_d * (1.0 - _width6 / _denom_d)
+    _a_demo6_pl = np.clip(_a_demo6, -15000, 15000)
+
+    _fig_d, _ax_d = plt.subplots(figsize=(10, 4))
+    _fig_d.patch.set_facecolor("#0e1117"); _ax_d.set_facecolor("#0e1117")
+    _ax_d.plot(_delta_demo, _a_demo6_pl, color="#69ff47", lw=2,
+               label=f"a(δ) — pole at {_d_pole6:.1f} neV, Δ = {_width6:.1f} neV")
+    _ax_d.axvline(_d_pole6,              color="#ff6ec7", lw=1.5, ls="--", label="pole δ_pole")
+    _ax_d.axvline(_d_pole6 + _width6,   color="#ffd740", lw=1.5, ls=":",  label="zero δ_pole + Δ")
+    _ax_d.axhline(_abg6_d,              color="#aaaaff", lw=1.0, ls=":",  label=f"a_bg = {_abg6_d:.0f} a₀")
+    _ax_d.axhline(0,                    color="#555",    lw=0.8)
+    _ax_d.set_xlabel("Channel-2 detuning δ  (neV)", color="white", fontsize=11)
+    _ax_d.set_ylabel("a  (a₀)",                      color="white", fontsize=11)
+    _ax_d.set_title("Breit-Wigner resonance demo — three-channel toy model",
+                    color="white", fontsize=11)
+    _ax_d.set_ylim(-15000, 15000)
+    _ax_d.legend(fontsize=9, framealpha=0.2, labelcolor="white",
+                 facecolor="#0e1117", edgecolor="#444")
+    _ax_d.tick_params(colors="white")
+    for _sp in _ax_d.spines.values(): _sp.set_edgecolor("#333")
+    _fig_d.tight_layout()
+    st.pyplot(_fig_d, use_container_width=True)
+    plt.close(_fig_d)
 
     # ── Wavefunction: K-matrix interior + analytic exterior ───────────────────
     # Three independent interior ODE solutions → combine so closed-channel BCs hold.
