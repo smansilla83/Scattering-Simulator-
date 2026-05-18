@@ -1260,9 +1260,11 @@ W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
                    label=f"B₀ = {_B0s} G")
     ax_cmp.axvline(_Bss, color="#69ff47", lw=1.2, ls=":", alpha=0.7,
                    label=f"B* = {_Bss} G")
-    ax_cmp.set_xlim(-15, 62); ax_cmp.set_ylim(-clip, clip)
+    ax_cmp.set_yscale("symlog", linthresh=500)
+    ax_cmp.set_ylim(-clip, clip)
+    ax_cmp.set_xlim(-15, 62)
     ax_cmp.set_xlabel("Magnetic field B (G)", fontsize=12)
-    ax_cmp.set_ylabel("Scattering length a  (a₀)", fontsize=12)
+    ax_cmp.set_ylabel("Scattering length a  (a₀)  [symlog]", fontsize=12)
     ax_cmp.set_title("Scattering length a(B) — paper formula vs fitted s-wave model",
                      color="white", fontsize=12)
     ax_cmp.legend(fontsize=10, framealpha=0.2, labelcolor="white",
