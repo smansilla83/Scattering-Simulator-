@@ -2,7 +2,6 @@ import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-from matplotlib.patches import FancyArrowPatch
 
 st.set_page_config(page_title="Region I Eigenvector Simulator", layout="wide")
 
@@ -16,109 +15,149 @@ st.markdown("""
   <h1 style="color:#ffffff; margin:0 0 0.5rem 0; font-size:2rem;">
     Region I — Eigenvector Simulator
   </h1>
-  <p style="color:#b0bec5; font-size:1.05rem; margin:0 0 1rem 0; max-width:800px;">
-    Inside the interaction region (<span style="color:#00e5ff;">R &lt; ā</span>), the two-channel
+  <p style="color:#b0bec5; font-size:1.05rem; margin:0 0 1rem 0; max-width:860px;">
+    Inside the interaction region (<span style="color:#00e5ff;">r &lt; ā</span>), the two-channel
     Hamiltonian couples an <span style="color:#ff6ec7;">electron state |e⟩</span> and a
     <span style="color:#69ff47;">cavity state |c⟩</span> through the off-diagonal coupling
     <span style="color:#ffd740;">ℏΩ</span>.
-    Because the potential matrix <b style="color:#ffffff;">V̂</b> is constant inside this region,
-    it can be diagonalised <em>once</em> via a mixing angle <span style="color:#ce93d8;">θ</span>,
-    yielding the <b style="color:#00e5ff;">dressed eigenstates</b> |+⟩ and |−⟩ that
-    decouple the radial equations.
+    Because the potential matrix <b style="color:#ffffff;">V̂</b> is <em>constant</em> in this region,
+    it is diagonalised once via a mixing angle <span style="color:#ce93d8;">θ</span>,
+    yielding <b style="color:#00e5ff;">dressed eigenstates</b> |+⟩ and |−⟩ that decouple the
+    radial equations. The full Hamiltonian then assigns each dressed channel its own
+    wavenumber <span style="color:#ffd740;">k±</span>, which depends on the total energy E and
+    the reduced mass m<sub>r</sub>.
   </p>
-  <p style="color:#b0bec5; font-size:0.95rem; margin:0;">
-    Use the sliders on the left to explore how the well depths V<sub>e</sub>, V<sub>c</sub>
-    and the coupling ℏΩ control the mixing angle, eigenvalues, and the geometry of the
-    dressed states on the Bloch circle.
+  <p style="color:#b0bec5; font-size:0.92rem; margin:0;">
+    <b style="color:#ffd740;">Parameter note:</b>
+    The <em>eigenvectors</em> (mixing angle θ) depend only on
+    <span style="color:#ff6ec7;">ΔV = (Ve−Vc)/2</span> and <span style="color:#ffd740;">ℏΩ</span>
+    — the common offset −(Ve+Vc)/2 shifts both eigenvalues equally and cannot affect the
+    eigenvectors. The <em>wavenumbers</em> k± additionally require E and m<sub>r</sub>.
+    So Ve and Vc are <b style="color:#ffffff;">not independently observable</b> from θ alone —
+    only their difference ΔV matters there.
   </p>
 </div>
 """, unsafe_allow_html=True)
 
 # ── Sidebar inputs ─────────────────────────────────────────────────────────────
 st.sidebar.header("Parameters")
-st.sidebar.markdown("---")
-Ve     = st.sidebar.slider("Ve  (eV)",  min_value=-10.0, max_value=10.0, value=2.0,  step=0.1)
-Vc     = st.sidebar.slider("Vc  (eV)",  min_value=-10.0, max_value=10.0, value=-2.0, step=0.1)
-hOmega = st.sidebar.slider("ℏΩ  (eV)", min_value=0.0,   max_value=10.0, value=1.0,  step=0.05)
-a_bar  = st.sidebar.slider("ā  (nm)",   min_value=0.5,   max_value=5.0,  value=2.0,  step=0.1)
+st.sidebar.markdown("**Potential**")
+Ve     = st.sidebar.slider("Ve  (eV)",   min_value=-10.0, max_value=10.0, value=2.0,  step=0.1)
+Vc     = st.sidebar.slider("Vc  (eV)",   min_value=-10.0, max_value=10.0, value=-2.0, step=0.1)
+hOmega = st.sidebar.slider("ℏΩ  (eV)",  min_value=0.0,   max_value=10.0, value=1.0,  step=0.05)
+a_bar  = st.sidebar.slider("ā  (nm)",    min_value=0.5,   max_value=5.0,  value=2.0,  step=0.1)
+st.sidebar.markdown("**Full Hamiltonian**")
+E_tot  = st.sidebar.slider("E  (eV)",    min_value=-10.0, max_value=10.0, value=0.5,  step=0.1)
+m_r    = st.sidebar.slider("mᵣ / mₑ",   min_value=0.05,  max_value=2.0,  value=0.5,  step=0.05)
+
+# ── Physical constant: ℏ²/2mₑ in eV·nm² ──────────────────────────────────────
+hbar2_over_2me = 0.038100  # eV·nm²
 
 # ── Derived quantities ─────────────────────────────────────────────────────────
 Delta_V   = (Ve - Vc) / 2.0
+offset    = -(Ve + Vc) / 2.0
 R         = np.sqrt(Delta_V**2 + hOmega**2)
 two_theta = np.arctan2(hOmega, Delta_V)
 theta     = two_theta / 2.0
 cos_t     = np.cos(theta)
 sin_t     = np.sin(theta)
-lam_plus  = -(Ve + Vc) / 2.0 + R
-lam_minus = -(Ve + Vc) / 2.0 - R
+lam_plus  = offset + R
+lam_minus = offset - R
+
+bare_e = offset + Delta_V   # = -Vc
+bare_c = offset - Delta_V   # = -Ve
 
 V_matrix = np.array([
-    [-(Ve + Vc) / 2.0 + Delta_V, hOmega],
-    [hOmega,                      -(Ve + Vc) / 2.0 - Delta_V],
+    [bare_e, hOmega],
+    [hOmega, bare_c],
 ])
 evals_np, evecs_np = np.linalg.eigh(V_matrix)
 
-bare_e = -(Ve + Vc) / 2.0 + Delta_V
-bare_c = -(Ve + Vc) / 2.0 - Delta_V
+# Wavenumbers for full Hamiltonian  k = sqrt(2 mᵣ (E−λ) / ℏ²)
+def wavenumber(E, lam, mr):
+    arg = (E - lam) * mr / hbar2_over_2me
+    if arg >= 0:
+        return np.sqrt(arg), "propagating", "#69ff47"
+    else:
+        return np.sqrt(-arg), "evanescent", "#ff6ec7"
+
+k_plus,  k_plus_type,  k_plus_col  = wavenumber(E_tot, lam_plus,  m_r)
+k_minus, k_minus_type, k_minus_col = wavenumber(E_tot, lam_minus, m_r)
 
 # ── Analytical results — landscape ────────────────────────────────────────────
 st.markdown("<h3 style='color:#00e5ff;'>Analytical Results</h3>", unsafe_allow_html=True)
 st.markdown(f"""
-<div style="display:flex; gap:3rem; flex-wrap:nowrap; align-items:flex-start;
+<div style="display:flex; gap:2.5rem; flex-wrap:nowrap; align-items:flex-start;
             background:#111827; border-radius:10px; padding:1.5rem;">
 
-  <div style="flex:1; min-width:220px;">
+  <div style="flex:1; min-width:210px;">
     <p style="color:#ffd740; font-weight:bold; margin:0 0 0.75rem 0;">Derived quantities</p>
-    <table style="width:100%; border-collapse:collapse; color:#ffffff; font-size:0.95rem;">
-      <tr><td style="padding:4px 8px; color:#b0bec5;">ΔV = (Ve − Vc)/2</td>
-          <td style="padding:4px 8px; color:#00e5ff; font-weight:bold;">{Delta_V:.4f} eV</td></tr>
-      <tr><td style="padding:4px 8px; color:#b0bec5;">R = √(ΔV² + ℏ²Ω²)</td>
-          <td style="padding:4px 8px; color:#00e5ff; font-weight:bold;">{R:.4f} eV</td></tr>
-      <tr><td style="padding:4px 8px; color:#b0bec5;">2θ</td>
-          <td style="padding:4px 8px; color:#ce93d8; font-weight:bold;">{np.degrees(two_theta):.2f}°</td></tr>
-      <tr><td style="padding:4px 8px; color:#b0bec5;">θ</td>
-          <td style="padding:4px 8px; color:#ce93d8; font-weight:bold;">{np.degrees(theta):.2f}°</td></tr>
-      <tr><td style="padding:4px 8px; color:#b0bec5;">λ₊</td>
-          <td style="padding:4px 8px; color:#69ff47; font-weight:bold;">{lam_plus:.4f} eV</td></tr>
-      <tr><td style="padding:4px 8px; color:#b0bec5;">λ₋</td>
-          <td style="padding:4px 8px; color:#ff6ec7; font-weight:bold;">{lam_minus:.4f} eV</td></tr>
+    <table style="width:100%; border-collapse:collapse; color:#ffffff; font-size:0.92rem;">
+      <tr><td style="padding:4px 6px; color:#b0bec5;">offset = −(Ve+Vc)/2</td>
+          <td style="padding:4px 6px; color:#aaaaff; font-weight:bold;">{offset:.4f} eV</td></tr>
+      <tr><td style="padding:4px 6px; color:#b0bec5;">ΔV = (Ve−Vc)/2</td>
+          <td style="padding:4px 6px; color:#00e5ff; font-weight:bold;">{Delta_V:.4f} eV</td></tr>
+      <tr><td style="padding:4px 6px; color:#b0bec5;">R = √(ΔV²+ℏ²Ω²)</td>
+          <td style="padding:4px 6px; color:#00e5ff; font-weight:bold;">{R:.4f} eV</td></tr>
+      <tr><td style="padding:4px 6px; color:#b0bec5;">2θ</td>
+          <td style="padding:4px 6px; color:#ce93d8; font-weight:bold;">{np.degrees(two_theta):.2f}°</td></tr>
+      <tr><td style="padding:4px 6px; color:#b0bec5;">θ</td>
+          <td style="padding:4px 6px; color:#ce93d8; font-weight:bold;">{np.degrees(theta):.2f}°</td></tr>
+      <tr><td style="padding:4px 6px; color:#b0bec5;">λ₊ = offset + R</td>
+          <td style="padding:4px 6px; color:#69ff47; font-weight:bold;">{lam_plus:.4f} eV</td></tr>
+      <tr><td style="padding:4px 6px; color:#b0bec5;">λ₋ = offset − R</td>
+          <td style="padding:4px 6px; color:#ff6ec7; font-weight:bold;">{lam_minus:.4f} eV</td></tr>
     </table>
   </div>
 
-  <div style="flex:1.4; min-width:280px;">
-    <p style="color:#ffd740; font-weight:bold; margin:0 0 0.75rem 0;">Eigenvectors</p>
-    <p style="color:#ffffff; font-size:0.95rem; line-height:2;">
+  <div style="flex:1.3; min-width:260px;">
+    <p style="color:#ffd740; font-weight:bold; margin:0 0 0.75rem 0;">Eigenvectors of V̂</p>
+    <p style="color:#aaaaaa; font-size:0.82rem; margin:0 0 0.5rem 0;">
+      Depend only on ΔV and ℏΩ (not the offset).
+    </p>
+    <p style="color:#ffffff; font-size:0.93rem; line-height:2.2;">
       <span style="color:#69ff47;">|+⟩</span> = cosθ |e⟩ + sinθ |c⟩
-      &nbsp;=&nbsp; <b style="color:#69ff47;">{cos_t:+.4f}</b> |e⟩
-               &nbsp;<b style="color:#69ff47;">{sin_t:+.4f}</b> |c⟩<br>
+      &nbsp;=&nbsp;<b style="color:#69ff47;">{cos_t:+.4f}</b> |e⟩
+      &nbsp;<b style="color:#69ff47;">{sin_t:+.4f}</b> |c⟩<br>
       <span style="color:#ff6ec7;">|−⟩</span> = −sinθ |e⟩ + cosθ |c⟩
-      &nbsp;=&nbsp; <b style="color:#ff6ec7;">{-sin_t:+.4f}</b> |e⟩
-               &nbsp;<b style="color:#ff6ec7;">{cos_t:+.4f}</b> |c⟩
+      &nbsp;=&nbsp;<b style="color:#ff6ec7;">{-sin_t:+.4f}</b> |e⟩
+      &nbsp;<b style="color:#ff6ec7;">{cos_t:+.4f}</b> |c⟩
+    </p>
+    <p style="color:#aaaaaa; font-size:0.82rem; margin:0.5rem 0 0 0;">
+      NumPy check — λ₋: [{evecs_np[0,0]:+.4f}, {evecs_np[1,0]:+.4f}] &nbsp;|&nbsp;
+      λ₊: [{evecs_np[0,1]:+.4f}, {evecs_np[1,1]:+.4f}]
     </p>
   </div>
 
-  <div style="flex:1.4; min-width:280px;">
-    <p style="color:#ffd740; font-weight:bold; margin:0 0 0.75rem 0;">NumPy verification</p>
+  <div style="flex:1.3; min-width:260px;">
+    <p style="color:#ffd740; font-weight:bold; margin:0 0 0.75rem 0;">Full Hamiltonian eigenstates</p>
+    <p style="color:#aaaaaa; font-size:0.82rem; margin:0 0 0.5rem 0;">
+      Spin structure = same |±⟩. Each channel gets a wavenumber k± from E and m<sub>r</sub>.
+    </p>
     <table style="width:100%; border-collapse:collapse; color:#ffffff; font-size:0.9rem;">
       <tr style="border-bottom:1px solid #333; color:#b0bec5;">
-        <th style="text-align:left; padding:4px 8px;">State</th>
-        <th style="padding:4px 8px;">|e⟩</th>
-        <th style="padding:4px 8px;">|c⟩</th>
-        <th style="padding:4px 8px;">Eigenvalue</th>
+        <th style="text-align:left; padding:4px 6px;">Channel</th>
+        <th style="padding:4px 6px;">λ (eV)</th>
+        <th style="padding:4px 6px;">k (nm⁻¹)</th>
+        <th style="padding:4px 6px;">Type</th>
       </tr>
       <tr>
-        <td style="padding:4px 8px; color:#ff6ec7;">λ₋</td>
-        <td style="padding:4px 8px; font-family:monospace;">{evecs_np[0,0]:+.4f}</td>
-        <td style="padding:4px 8px; font-family:monospace;">{evecs_np[1,0]:+.4f}</td>
-        <td style="padding:4px 8px; font-family:monospace;">{evals_np[0]:.4f} eV</td>
+        <td style="padding:5px 6px; color:#69ff47;">|+⟩</td>
+        <td style="padding:5px 6px; font-family:monospace;">{lam_plus:.4f}</td>
+        <td style="padding:5px 6px; font-family:monospace;">{k_plus:.4f}</td>
+        <td style="padding:5px 6px; color:{k_plus_col}; font-weight:bold;">{k_plus_type}</td>
       </tr>
       <tr>
-        <td style="padding:4px 8px; color:#69ff47;">λ₊</td>
-        <td style="padding:4px 8px; font-family:monospace;">{evecs_np[0,1]:+.4f}</td>
-        <td style="padding:4px 8px; font-family:monospace;">{evecs_np[1,1]:+.4f}</td>
-        <td style="padding:4px 8px; font-family:monospace;">{evals_np[1]:.4f} eV</td>
+        <td style="padding:5px 6px; color:#ff6ec7;">|−⟩</td>
+        <td style="padding:5px 6px; font-family:monospace;">{lam_minus:.4f}</td>
+        <td style="padding:5px 6px; font-family:monospace;">{k_minus:.4f}</td>
+        <td style="padding:5px 6px; color:{k_minus_col}; font-weight:bold;">{k_minus_type}</td>
       </tr>
     </table>
+    <p style="color:#aaaaaa; font-size:0.82rem; margin:0.75rem 0 0 0;">
+      ψ±(r) = (A± e<sup>ik±r</sup> + B± e<sup>−ik±r</sup>) |±⟩ &nbsp;[propagating]<br>
+      ψ±(r) = (A± e<sup>κ±r</sup> + B± e<sup>−κ±r</sup>) |±⟩ &nbsp;[evanescent, k→iκ]
+    </p>
   </div>
 
 </div>
@@ -132,7 +171,6 @@ st.markdown("<h3 style='color:#00e5ff;'>Potential Energy Diagram</h3>", unsafe_a
 r = np.linspace(0, a_bar * 2.2, 1000)
 inside = r < a_bar
 
-# Bare diagonal potentials as a function of r
 Ve_r = np.where(inside, -Ve, 0.0)
 Vc_r = np.where(inside, -Vc, 0.0)
 
@@ -145,47 +183,38 @@ ax_pot.yaxis.label.set_color("white")
 for spine in ax_pot.spines.values():
     spine.set_edgecolor("#333")
 
-# Shaded region I
 ax_pot.axvspan(0, a_bar, color="#1a0533", alpha=0.6, label="Region I  (r < ā)")
 ax_pot.axvline(a_bar, color="#ffd740", lw=1.5, ls="--", alpha=0.7)
-ax_pot.text(a_bar + 0.04, ax_pot.get_ylim()[0] if ax_pot.get_ylim()[0] != 0 else -0.3,
-            "ā", color="#ffd740", fontsize=13)
+ax_pot.text(a_bar * 1.01, 0, "ā", color="#ffd740", fontsize=13)
 
-# Bare |e⟩ potential
 ax_pot.plot(r, Ve_r, color="#ff6ec7", lw=2.5, label=r"$V_{ee}(r)$ — bare $|e\rangle$")
-# Bare |c⟩ potential
 ax_pot.plot(r, Vc_r, color="#69ff47", lw=2.5, label=r"$V_{cc}(r)$ — bare $|c\rangle$")
 
-# Dressed eigenvalues inside region I as horizontal dashed lines
 ax_pot.hlines(lam_plus,  0, a_bar, colors="#00e5ff", lw=2, ls="-.",
               label=f"λ₊ = {lam_plus:.3f} eV  (dressed |+⟩)")
 ax_pot.hlines(lam_minus, 0, a_bar, colors="#ce93d8", lw=2, ls="-.",
               label=f"λ₋ = {lam_minus:.3f} eV  (dressed |−⟩)")
 
-# Coupling arrow inside well
-mid_r = a_bar / 2
-ax_pot.annotate("", xy=(-Vc, mid_r), xytext=(-Ve, mid_r),
-                xycoords=("data", "axes fraction"),
-                textcoords=("data", "axes fraction"))
+ax_pot.axhline(E_tot, color="#ffd740", lw=1.5, ls=":", alpha=0.85,
+               label=f"E = {E_tot:.2f} eV  (total energy)")
 
-ax_pot.set_xlabel("r  (nm)", fontsize=12)
-ax_pot.set_ylabel("Energy  (eV)", fontsize=12)
-ax_pot.set_title("Bare and dressed potentials across Region I", color="white", fontsize=13)
-
-yvals = np.concatenate([Ve_r, Vc_r, [lam_plus, lam_minus]])
-ypad  = (yvals.max() - yvals.min()) * 0.18 + 0.3
+yvals = np.concatenate([Ve_r, Vc_r, [lam_plus, lam_minus, E_tot]])
+ypad  = (yvals.max() - yvals.min()) * 0.2 + 0.4
 ax_pot.set_ylim(yvals.min() - ypad, yvals.max() + ypad)
 ax_pot.set_xlim(r.min(), r.max())
 
-leg = ax_pot.legend(loc="upper right", framealpha=0.2, labelcolor="white",
-                    facecolor="#0e1117", edgecolor="#444", fontsize=10)
+if abs(-Ve - (-Vc)) > 0.15:
+    mid_r = a_bar * 0.5
+    ax_pot.annotate("", xy=(mid_r, -Vc), xytext=(mid_r, -Ve),
+                    arrowprops=dict(arrowstyle="<->", color="#ffd740", lw=1.8))
+    ax_pot.text(mid_r + a_bar * 0.04, (-Ve + (-Vc)) / 2,
+                "  ℏΩ coupling", color="#ffd740", fontsize=10, va="center")
 
-# Label ℏΩ coupling inside well
-ax_pot.annotate("",
-    xy=(a_bar * 0.5, -Vc), xytext=(a_bar * 0.5, -Ve),
-    arrowprops=dict(arrowstyle="<->", color="#ffd740", lw=1.8))
-ax_pot.text(a_bar * 0.52, (-Ve + (-Vc)) / 2, "  ℏΩ coupling",
-            color="#ffd740", fontsize=10, va="center")
+ax_pot.set_xlabel("r  (nm)", fontsize=12)
+ax_pot.set_ylabel("Energy  (eV)", fontsize=12)
+ax_pot.set_title("Bare and dressed potentials — Region I", color="white", fontsize=13)
+ax_pot.legend(loc="upper right", framealpha=0.2, labelcolor="white",
+              facecolor="#0e1117", edgecolor="#444", fontsize=10)
 
 fig_pot.tight_layout()
 st.pyplot(fig_pot, use_container_width=True)
@@ -236,10 +265,8 @@ ax.text(arc_r * 1.35 * np.cos(mid), arc_r * 1.35 * np.sin(mid),
 
 ax.plot([0, Delta_V], [0, 0], color="#ff6ec7", lw=1.6, ls="--")
 ax.plot([Delta_V, Delta_V], [0, hOmega], color="#69ff47", lw=1.6, ls="--")
-ax.text(Delta_V / 2, -lim * 0.1, r"$\Delta_V$",
-        color="#ff6ec7", ha="center", fontsize=11)
-ax.text(Delta_V + lim * 0.07, hOmega / 2, r"$\hbar\Omega$",
-        color="#69ff47", fontsize=11)
+ax.text(Delta_V / 2, -lim * 0.1, r"$\Delta_V$", color="#ff6ec7", ha="center", fontsize=11)
+ax.text(Delta_V + lim * 0.07, hOmega / 2, r"$\hbar\Omega$", color="#69ff47", fontsize=11)
 
 ax2 = axes[1]
 ax2.set_title("Dressed states on the unit circle", color="white", fontsize=13)
@@ -283,7 +310,7 @@ levels = [
     (lam_minus, "λ₋ dressed",  "#ce93d8", "-"),
 ]
 
-all_vals = [v for v, *_ in levels]
+all_vals = [v for v, *_ in levels] + [E_tot]
 ymin = min(all_vals)
 ymax = max(all_vals)
 pad  = max((ymax - ymin) * 0.4, 0.5)
@@ -292,7 +319,6 @@ fig2, ax3 = plt.subplots(figsize=(12, 5))
 fig2.patch.set_facecolor("#0e1117")
 ax3.set_facecolor("#0e1117")
 ax3.tick_params(colors="white", labelsize=11)
-ax3.yaxis.label.set_color("white")
 ax3.set_ylabel("Energy (eV)", color="white", fontsize=12)
 for spine in ax3.spines.values():
     spine.set_edgecolor("#333")
@@ -316,6 +342,11 @@ for y_lbl, label, col in placed:
     ax3.text(0.02, y_lbl, label, color=col, va="center", fontsize=11, fontweight="bold",
              transform=ax3.get_yaxis_transform(),
              bbox=dict(boxstyle="round,pad=0.25", facecolor="#0e1117", edgecolor="none", alpha=0.85))
+
+ax3.axhline(E_tot, color="#ffd740", lw=1.8, ls=":", alpha=0.9)
+ax3.text(0.02, E_tot, f"E = {E_tot:.2f} eV", color="#ffd740", va="center", fontsize=11,
+         fontweight="bold", transform=ax3.get_yaxis_transform(),
+         bbox=dict(boxstyle="round,pad=0.25", facecolor="#0e1117", edgecolor="none", alpha=0.85))
 
 fig2.tight_layout()
 st.pyplot(fig2, use_container_width=True)
