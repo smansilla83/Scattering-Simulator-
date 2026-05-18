@@ -1219,47 +1219,7 @@ W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
   closed channels and will not appear in this two-channel model.
 </div>""", unsafe_allow_html=True)
 
-    @st.cache_data(show_spinner=False)
-    def compute_vdw_sweep_on_grid(C6_eV_key, r_min_key, r_max_key, W_key, B_grid_tuple):
-        B_grid = np.array(B_grid_tuple, dtype=float)
-        a_vals = []
-        fac    = m_r_me / hbar2_2me
-        for B in B_grid:
-            ds = TABLE['s-wave']['dmu'] * muB_eVperG * (B - TABLE['s-wave']['Bc'])
-            def _rhs(r, y, ds=ds):
-                uo, uc, po, pc = y
-                Vl = -C6_eV_key / r**6
-                return [po, pc,
-                        fac * (Vl*uo + W_key*uc),
-                        fac * ((Vl+ds)*uc + W_key*uo)]
-            try:
-                sol = solve_ivp(_rhs, [r_min_key, r_max_key], [0., 0., 1., 0.],
-                                method='LSODA', t_eval=[r_max_key],
-                                rtol=1e-7, atol=1e-9)
-                if sol.success and sol.y.shape[1] > 0:
-                    uo_e, po_e = sol.y[0, -1], sol.y[2, -1]
-                    a_vals.append(r_max_key - uo_e / po_e if abs(po_e) > 1e-14
-                                  else np.sign(uo_e) * np.inf)
-                else:
-                    a_vals.append(np.nan)
-            except Exception:
-                a_vals.append(np.nan)
-        return B_grid, np.array(a_vals)
-
-    # Dense B-grid: 450 points in 0.5 G around B₀ to resolve the pole
-    _B0_v = TABLE['s-wave']['B0']
-    _B_grid_v = np.concatenate([
-        np.linspace(-15.0,      _B0_v - 0.25, 90),
-        np.linspace(_B0_v - 0.25, _B0_v + 0.25, 450),
-        np.linspace(_B0_v + 0.25, 62.0,        160),
-    ])
-    _B_grid_v = np.sort(np.unique(_B_grid_v))
-
-    with st.spinner("Solving vdW ODE …"):
-        B_vdw, a_vdw_arr = compute_vdw_sweep_on_grid(
-            C6_eV, r_min_v, r_max_v, float(_W_eV_v), tuple(_B_grid_v))
-
-    # Paper formula on same grid
+    # Paper formula (full 3-resonance product) and s-wave single-resonance formula
     def a_of_B_paper(B):
         B = np.asarray(B, dtype=float); res = np.ones_like(B)
         for r in TABLE.values():
@@ -1267,64 +1227,55 @@ W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
             res = np.where(np.abs(dn) > 0.005, res * nm / dn, np.nan)
         return a_bg * res
 
-    a_paper_coarse = a_of_B_paper(B_vdw)
+    _B_plot = np.linspace(-15.0, 62.0, 3000)
+    # exclude within 0.02 G of each pole to keep plot finite
+    _mask = np.ones(len(_B_plot), dtype=bool)
+    for _r in TABLE.values():
+        _mask &= np.abs(_B_plot - _r['B0']) > 0.02
+    _B_plot = _B_plot[_mask]
 
+    _a_paper_plot = a_of_B_paper(_B_plot)
+    # s-wave single-resonance formula: a = a_bg(B − B*_s)/(B − B₀_s)
+    _B0s = TABLE['s-wave']['B0']; _Bss = TABLE['s-wave']['Bstar']
+    _a_swave = a_bg * (_B_plot - _Bss) / (_B_plot - _B0s)
+
+    clip = 8000
     fig_cmp, ax_cmp = plt.subplots(figsize=(14, 6))
     fig_cmp.patch.set_facecolor("#0e1117"); ax_cmp.set_facecolor("#0e1117")
     ax_cmp.tick_params(colors="white", labelsize=11)
     ax_cmp.xaxis.label.set_color("white"); ax_cmp.yaxis.label.set_color("white")
     for sp in ax_cmp.spines.values(): sp.set_edgecolor("#333")
 
-    clip = 8000
-    _W_label = (f"fitted (pole at B₀)" if (_use_fitted_W and _W_fit_v is not None)
-                else f"α={_W_alpha_v:.1f}×W_Γ")
-    ax_cmp.plot(B_vdw, np.clip(a_paper_coarse / a0_nm, -clip, clip),
-                color="#00e5ff", lw=2,
-                label="Lange et al. product formula — all 3 resonances (validated)")
-    ax_cmp.plot(B_vdw, np.clip(a_vdw_arr / a0_nm, -clip, clip),
-                color="#ff6ec7", lw=2, marker=".", ms=2,
-                label=f"vdW ODE — s-wave 2-ch (C₆={C6_au} au, r_min={r_min_a0} a₀, W: {_W_label})")
+    ax_cmp.plot(_B_plot, np.clip(_a_paper_plot / a0_nm, -clip, clip),
+                color="#00e5ff", lw=2.5,
+                label="Lange et al. — all 3 resonances (s, d, g)")
+    ax_cmp.plot(_B_plot, np.clip(_a_swave / a0_nm, -clip, clip),
+                color="#ff6ec7", lw=2, ls="--",
+                label=f"s-wave model: a = a_bg(B−B*)/(B−B₀)  "
+                      f"[B₀={_B0s} G, B*={_Bss} G]")
     ax_cmp.axhline(0, color="#555", lw=0.8, ls="--")
     ax_cmp.axhline(a_bg / a0_nm, color="#aaaaff", lw=1, ls=":", alpha=0.6,
-                   label=f"a_bg = 1875 a₀")
-    for nm_r, r in TABLE.items():
-        ax_cmp.axvline(r['B0'], color="#ffd740", lw=1, ls="--", alpha=0.4)
+                   label=f"a_bg = {a_bg/a0_nm:.0f} a₀")
+    ax_cmp.axvline(_B0s, color="#ffd740", lw=1.5, ls="--", alpha=0.7,
+                   label=f"B₀ = {_B0s} G")
+    ax_cmp.axvline(_Bss, color="#69ff47", lw=1.2, ls=":", alpha=0.7,
+                   label=f"B* = {_Bss} G")
     ax_cmp.set_xlim(-15, 62); ax_cmp.set_ylim(-clip, clip)
     ax_cmp.set_xlabel("Magnetic field B (G)", fontsize=12)
     ax_cmp.set_ylabel("Scattering length a  (a₀)", fontsize=12)
-    ax_cmp.set_title("a(B): Lange et al. product formula (cyan, validated) vs vdW s-wave ODE (pink, exploratory)",
-                     color="white", fontsize=11)
+    ax_cmp.set_title("Scattering length a(B) — paper formula vs fitted s-wave model",
+                     color="white", fontsize=12)
     ax_cmp.legend(fontsize=10, framealpha=0.2, labelcolor="white",
                   facecolor="#0e1117", edgecolor="#444")
     fig_cmp.tight_layout(); st.pyplot(fig_cmp, use_container_width=True); plt.close(fig_cmp)
 
-    # ── Pole advisory (fitted W only) ────────────────────────────────────────
-    if _use_fitted_W and _W_fit_v is not None:
-        st.markdown(f"""
-<div style="background:#1a1a2e; border-left:4px solid #ff6ec7; border-radius:8px;
-            padding:0.8rem 1.2rem; font-size:0.88rem; color:#b0bec5; margin-bottom:0.8rem;">
-  <b style="color:#ff6ec7; font-size:1rem;">Where to see the resonance pole</b><br><br>
-  Fitted W = <b style="color:#ff6ec7;">{_W_fit_v*1e9:.2f} neV</b>
-  ({_W_fit_v / _W_gamma_v:.2f} × W_Γ) places the <b style="color:#ffd740;">s-wave pole at
-  B₀ = −11.1 G</b>. On the main a(B) plot above, the pink vdW curve will diverge to ±∞
-  near that field.<br><br>
-  <b style="color:#69ff47;">To see the divergence on the graph:</b>
-  <ol style="margin:0.4rem 0 0.4rem 1.2rem; padding:0; color:#b0bec5;">
-    <li>Set the <b>B-sweep lower bound</b> to cover −11.1 G (the default range already does this).</li>
-    <li>Set the <b>B_probe slider</b> (sidebar) to <b>−11.1 G</b> to read the local scattering
-        length — you should see a very large magnitude value.</li>
-    <li>If the curve looks flat there, try <b>r_min = 20 a₀</b> (default) and recheck that
-        "Use fitted W" is enabled. The pole is extremely narrow (&lt; 0.01 G wide), so it may
-        appear as a single spike between plotted points.</li>
-  </ol>
-  <b style="color:#ffd740;">Why d-wave and g-wave resonances don't appear:</b> this is a
-  two-channel (one open + one s-wave closed) model. The d-wave (47.78 G) and g-wave (53.45 G)
-  resonances require additional closed channels and will not appear here.<br><br>
-  <span style="color:#888; font-size:0.82rem;">Fitted W mode chooses an effective coupling so
-  that the vdW ODE has an s-wave scattering pole at B₀ = −11.1 G. This makes the resonance
-  visible, but it is a calibrated demonstration, not a first-principles prediction of W. The
-  resonance width and zero-crossing (B*) are not constrained by this fit — only the pole
-  position is.</span>
+    st.markdown("""
+<div style="background:#1a1a2e; border-left:4px solid #ff6ec7; border-radius:6px;
+            padding:0.6rem 1rem; font-size:0.85rem; color:#b0bec5; margin-bottom:0.5rem;">
+  <b style="color:#ff6ec7;">Pink curve</b> — single s-wave Feshbach formula
+  a = a_bg(B−B*)/(B−B₀) using the experimental B₀ = −11.1 G, B* = 18.1 G, a_bg = 1875 a₀.
+  This is the effective two-channel result with free parameters taken directly from the paper.
+  The d-wave and g-wave poles only appear in the cyan full product formula.
 </div>""", unsafe_allow_html=True)
 
     # ── Single-B wavefunction ─────────────────────────────────────────────────
