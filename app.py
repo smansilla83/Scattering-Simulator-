@@ -76,7 +76,7 @@ with col1:
 with col2:
     st.subheader("Bloch-plane view of the traceless part")
 
-    fig, axes = plt.subplots(1, 2, figsize=(9, 4.5))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     fig.patch.set_facecolor("#0e1117")
 
     for ax in axes:
@@ -172,31 +172,40 @@ ymin = min(all_vals)
 ymax = max(all_vals)
 pad  = max((ymax - ymin) * 0.4, 0.5)
 
-fig2, ax3 = plt.subplots(figsize=(8, 4))
+fig2, ax3 = plt.subplots(figsize=(10, 5))
 fig2.patch.set_facecolor("#0e1117")
 ax3.set_facecolor("#0e1117")
 ax3.tick_params(colors="white")
 ax3.yaxis.label.set_color("white")
-ax3.set_ylabel("Energy (eV)", color="white")
+ax3.set_ylabel("Energy (eV)", color="white", fontsize=12)
 for spine in ax3.spines.values():
     spine.set_edgecolor("#444")
 ax3.xaxis.set_visible(False)
 ax3.set_xlim(0, 1)
 ax3.set_ylim(ymin - pad, ymax + pad)
 
-# stagger overlapping labels
+# Draw lines and collect (y_actual, y_label, label, color) resolving overlaps
+min_gap = pad * 0.35
 sorted_levels = sorted(levels, key=lambda x: x[0])
-used_y = []
+placed = []   # (y_label, label, col)
+
 for y, label, col, ls in sorted_levels:
-    ax3.axhline(y, color=col, lw=2, ls=ls)
-    # nudge label up if too close to a previous one
-    label_y = y
-    for uy in used_y:
-        if abs(label_y - uy) < pad * 0.4:
-            label_y = uy + pad * 0.4
-    used_y.append(label_y)
-    ax3.text(0.51, label_y, label, color=col, va="center", fontsize=10,
-             transform=ax3.get_yaxis_transform())
+    ax3.axhline(y, color=col, lw=2.5, ls=ls, alpha=0.9)
+    # find a label y that doesn't collide with already-placed ones
+    y_lbl = y
+    for py, *_ in placed:
+        if abs(y_lbl - py) < min_gap:
+            y_lbl = py + min_gap
+    placed.append((y_lbl, label, col))
+
+for y_lbl, label, col in placed:
+    ax3.text(
+        0.02, y_lbl, label,
+        color=col, va="center", fontsize=11, fontweight="bold",
+        transform=ax3.get_yaxis_transform(),
+        bbox=dict(boxstyle="round,pad=0.2", facecolor="#0e1117", edgecolor="none", alpha=0.8),
+    )
+    ax3.yaxis.set_tick_params(labelsize=10, labelcolor="white")
 
 fig2.tight_layout()
 st.pyplot(fig2)
