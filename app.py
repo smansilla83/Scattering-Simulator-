@@ -1102,32 +1102,46 @@ Paper ā = 95.7 a₀
                 unsafe_allow_html=True)
 
     @st.cache_data(show_spinner=False)
-    def compute_vdw_sweep(C6_eV_key, r_min_key, r_max_key, W_key, n_B_key):
-        B_sw   = np.linspace(20.0, 62.0, n_B_key)
-        a_sw   = np.full(n_B_key, np.nan)
+    def compute_vdw_sweep(C6_eV_key, r_min_key, r_max_key, n_B_key):
+        # 4-channel ODE: 1 open + 3 closed (s, d, g-wave resonances).
+        # Coarse sweep + fine grid near each in-range resonance so narrow peaks are resolved.
+        B_coarse = np.linspace(20.0, 62.0, n_B_key)
+        B_fine_d = np.linspace(TABLE['d-wave']['B0'] - 0.4, TABLE['d-wave']['B0'] + 0.4, 120)
+        B_fine_g = np.linspace(TABLE['g-wave']['B0'] - 0.03, TABLE['g-wave']['B0'] + 0.03, 100)
+        B_sw = np.sort(np.unique(np.concatenate([B_coarse, B_fine_d, B_fine_g])))
+        B_sw = B_sw[(B_sw >= 20.0) & (B_sw <= 62.0)]
+
+        a_sw   = np.full(len(B_sw), np.nan)
         factor = m_r_me / hbar2_2me
+        W_s = np.sqrt(TABLE['s-wave']['Gamma'] * 1e6 * h_eVs * hbar2_2mr / a_bar_cs**2)
+        W_d = np.sqrt(TABLE['d-wave']['Gamma'] * 1e6 * h_eVs * hbar2_2mr / a_bar_cs**2)
+        W_g = np.sqrt(TABLE['g-wave']['Gamma'] * 1e6 * h_eVs * hbar2_2mr / a_bar_cs**2)
+
         for i, B in enumerate(B_sw):
             ds = TABLE['s-wave']['dmu'] * muB_eVperG * (B - TABLE['s-wave']['Bc'])
-            def ode_v(r, y, ds=ds):
-                uo, uc, puo, puc = y
+            dd = TABLE['d-wave']['dmu'] * muB_eVperG * (B - TABLE['d-wave']['Bc'])
+            dg = TABLE['g-wave']['dmu'] * muB_eVperG * (B - TABLE['g-wave']['Bc'])
+            def ode_v(r, y, ds=ds, dd=dd, dg=dg):
+                uo, us, ud, ug, puo, pus, pud, pug = y
                 Vl = -C6_eV_key / r**6
-                return [puo, puc,
-                        factor * ((Vl)      * uo + W_key * uc),
-                        factor * ((Vl + ds) * uc + W_key * uo)]
+                return [puo, pus, pud, pug,
+                        factor * (Vl*uo + W_s*us + W_d*ud + W_g*ug),
+                        factor * ((Vl+ds)*us + W_s*uo),
+                        factor * ((Vl+dd)*ud + W_d*uo),
+                        factor * ((Vl+dg)*ug + W_g*uo)]
             try:
                 sol = solve_ivp(ode_v, [r_min_key, r_max_key],
-                                [0., 0., 1., 0.],
-                                method='RK45', rtol=1e-7, atol=1e-9)
-                uo_e = sol.y[0,-1]; puo_e = sol.y[2,-1]
+                                [0., 0., 0., 0., 1., 0., 0., 0.],
+                                method='LSODA', rtol=1e-8, atol=1e-10)
+                uo_e = sol.y[0,-1]; puo_e = sol.y[4,-1]
                 if abs(puo_e) > 1e-20:
                     a_sw[i] = sol.t[-1] - uo_e / puo_e
             except Exception:
                 pass
         return B_sw, a_sw
 
-    with st.spinner(f"Solving vdW ODE for {n_B_vdw} field values …"):
-        B_vdw, a_vdw_arr = compute_vdw_sweep(
-            C6_eV, r_min_v, r_max_v, float(_W_eV_v), n_B_vdw)
+    with st.spinner(f"Solving 4-channel vdW ODE …"):
+        B_vdw, a_vdw_arr = compute_vdw_sweep(C6_eV, r_min_v, r_max_v, n_B_vdw)
 
     # Paper formula on same grid
     def a_of_B_paper(B):
@@ -1150,7 +1164,7 @@ Paper ā = 95.7 a₀
                 color="#00e5ff", lw=2, label="Square-well product formula (paper)")
     ax_cmp.plot(B_vdw, np.clip(a_vdw_arr / a0_nm, -clip, clip),
                 color="#ff6ec7", lw=2, ls="--", marker="o", ms=3,
-                label=f"vdW ODE  (C₆={C6_au} au, r_min={r_min_a0} a₀)")
+                label=f"vdW ODE  4-ch (C₆={C6_au} au, r_min={r_min_a0} a₀)")
     ax_cmp.axhline(0, color="#555", lw=0.8, ls="--")
     ax_cmp.axhline(a_bg / a0_nm, color="#aaaaff", lw=1, ls=":", alpha=0.6,
                    label=f"a_bg = 1875 a₀")
@@ -1169,20 +1183,28 @@ Paper ā = 95.7 a₀
                 unsafe_allow_html=True)
 
     _ds_probe = TABLE['s-wave']['dmu'] * muB_eVperG * (B_probe - TABLE['s-wave']['Bc'])
+    _dd_probe = TABLE['d-wave']['dmu'] * muB_eVperG * (B_probe - TABLE['d-wave']['Bc'])
+    _dg_probe = TABLE['g-wave']['dmu'] * muB_eVperG * (B_probe - TABLE['g-wave']['Bc'])
+    _Ws_v = np.sqrt(TABLE['s-wave']['Gamma'] * 1e6 * h_eVs * hbar2_2mr / a_bar_cs**2)
+    _Wd_v = np.sqrt(TABLE['d-wave']['Gamma'] * 1e6 * h_eVs * hbar2_2mr / a_bar_cs**2)
+    _Wg_v = np.sqrt(TABLE['g-wave']['Gamma'] * 1e6 * h_eVs * hbar2_2mr / a_bar_cs**2)
 
     def ode_vdw_probe(r, y):
-        uo, uc, puo, puc = y
+        uo, us, ud, ug, puo, pus, pud, pug = y
         Vl = -C6_eV / r**6
-        return [puo, puc,
-                _factor_v * (Vl       * uo + _W_eV_v * uc),
-                _factor_v * ((Vl + _ds_probe) * uc + _W_eV_v * uo)]
+        return [puo, pus, pud, pug,
+                _factor_v * (Vl*uo + _Ws_v*us + _Wd_v*ud + _Wg_v*ug),
+                _factor_v * ((Vl+_ds_probe)*us + _Ws_v*uo),
+                _factor_v * ((Vl+_dd_probe)*ud + _Wd_v*uo),
+                _factor_v * ((Vl+_dg_probe)*ug + _Wg_v*uo)]
 
     r_eval_vp = np.linspace(r_min_v, r_max_v, 4000)
-    sol_vp    = solve_ivp(ode_vdw_probe, [r_min_v, r_max_v], [0., 0., 1., 0.],
-                          t_eval=r_eval_vp, method='RK45', rtol=1e-10, atol=1e-12)
+    sol_vp    = solve_ivp(ode_vdw_probe, [r_min_v, r_max_v],
+                          [0., 0., 0., 0., 1., 0., 0., 0.],
+                          t_eval=r_eval_vp, method='LSODA', rtol=1e-10, atol=1e-12)
 
     uo_vp = sol_vp.y[0]; uc_vp = sol_vp.y[1]; r_vp = sol_vp.t
-    uo_end_v = sol_vp.y[0,-1]; puo_end_v = sol_vp.y[2,-1]
+    uo_end_v = sol_vp.y[0,-1]; puo_end_v = sol_vp.y[4,-1]
     a_vdw_probe = r_vp[-1] - uo_end_v/puo_end_v if abs(puo_end_v) > 1e-20 else np.nan
 
     fig_wf, axes_wf = plt.subplots(1, 2, figsize=(16, 5))
@@ -1197,7 +1219,7 @@ Paper ā = 95.7 a₀
 
     ax_w = axes_wf[0]
     ax_w.plot(r_vp / a0_nm, uo_vp, color="#69ff47", lw=2, label="u_open")
-    ax_w.plot(r_vp / a0_nm, uc_vp, color="#ff6ec7", lw=2, label="u_closed")
+    ax_w.plot(r_vp / a0_nm, uc_vp, color="#ff6ec7", lw=2, label="u_s-closed (dominant)")
     ax_w.axhline(0, color="#444", lw=0.6)
     ax_w.set_xlabel("r  (a₀)"); ax_w.set_ylabel("u(r)  [arb.]")
     ax_w.set_title(f"vdW wavefunction → a = {a_vdw_probe/a0_nm:.1f} a₀  "
@@ -1206,9 +1228,10 @@ Paper ā = 95.7 a₀
     ax_w.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
 
     ax_w2 = axes_wf[1]
+    _uc_all_vp = sol_vp.y[1]**2 + sol_vp.y[2]**2 + sol_vp.y[3]**2
     ax_w2.plot(r_vp / a0_nm, uo_vp**2, color="#69ff47", lw=2, label="|u_open|²")
-    ax_w2.plot(r_vp / a0_nm, uc_vp**2, color="#ff6ec7", lw=2, label="|u_closed|²")
-    ax_w2.plot(r_vp / a0_nm, uo_vp**2 + uc_vp**2, color="#ffd740", lw=1.5, ls="--", label="total")
+    ax_w2.plot(r_vp / a0_nm, _uc_all_vp, color="#ff6ec7", lw=2, label="|u_s|²+|u_d|²+|u_g|²")
+    ax_w2.plot(r_vp / a0_nm, uo_vp**2 + _uc_all_vp, color="#ffd740", lw=1.5, ls="--", label="total")
     ax_w2.axhline(0, color="#444", lw=0.6)
     ax_w2.set_xlabel("r  (a₀)"); ax_w2.set_ylabel("|u(r)|²")
     ax_w2.set_title("Probability density", color="white")
@@ -1220,11 +1243,16 @@ Paper ā = 95.7 a₀
 <div style="background:#111827; border-radius:8px; padding:1rem 1.4rem; margin-top:1rem;">
 <p style="color:#ffd740; font-weight:bold; margin:0 0 0.5rem 0;">What the comparison tells you</p>
 <ul style="color:#b0bec5; margin:0; padding-left:1.2rem; line-height:1.9;">
-  <li>Where the two curves <b style="color:#fff;">agree</b>: the square-well captures the correct
-      resonance positions — the physics is set by the long-range scale ā, not the well shape.</li>
-  <li>Where they <b style="color:#fff;">differ</b>: near-resonance curvature and the value of a_bg
-      depend on r_min (the short-range phase). Changing r_min shifts which branch of the
-      scattering length you land on.</li>
+  <li><b style="color:#fff;">Three resonances</b>: the ODE now includes s-, d-, and g-wave closed
+      channels. The broad s-wave feature (B₀ = −11.1 G) is off the left edge of the plot;
+      the d-wave (B₀ = 47.78 G) and g-wave (B₀ = 53.45 G) peaks appear within 20–62 G. Fine
+      B-sampling is added automatically near these narrow resonances so they are resolved.</li>
+  <li><b style="color:#fff;">Why the curves differ quantitatively</b>: the coupling W is derived
+      from Γ/h — this sets the resonance <em>strength</em> but not the exact B₀ and B*.
+      To match the product formula exactly, W must be fitted to the literature pole positions.</li>
+  <li><b style="color:#fff;">r_min dependence</b>: changing r_min adjusts the short-range phase,
+      shifting the background scattering length and changing which branch you land on near
+      each resonance.</li>
   <li>The vdW length <b style="color:#ce93d8;">l_vdW = ½(C₆/[ħ²/2mᵣ])^(1/4)</b> sets the
       natural scale — the paper's ā ≈ 95.7 a₀ is precisely this quantity for Cs.</li>
 </ul>
