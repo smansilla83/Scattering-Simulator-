@@ -334,31 +334,74 @@ with tab1:
                bbox=dict(boxstyle="round,pad=0.25", facecolor="#0e1117", edgecolor="none", alpha=0.85))
     fig_sp.tight_layout(); st.pyplot(fig_sp, use_container_width=True); plt.close(fig_sp)
 
-    # Analytic wavefunction — no ODE needed inside a constant-V̂ square well
-    st.markdown("<h3 style='color:#ffd740;'>Wavefunction — Analytic Dressed-State Solution</h3>",
+    # ── K-matrix physical wavefunction
+    st.markdown("<h3 style='color:#ffd740;'>Wavefunction — Physical Scattering Solution</h3>",
                 unsafe_allow_html=True)
     st.markdown("""<p style="color:#b0bec5; font-size:0.93rem; margin:0 0 1rem 0;">
-Inside Region I, V̂ is <b>constant</b>, so u±″ = −k±² u± is solved <b>exactly</b>.
-Propagating dressed state → <b style="color:#00e5ff;">sin(k±r)</b>;
-evanescent dressed state → <b style="color:#ff6ec7;">sinh(κ±r)</b>.
-Bare-channel wavefunctions follow by the inverse rotation θ.
-Numerical integration is avoided: direct <b>sinh</b> avoids the exponential
-blow-up that plagues the evanescent channel in RK45.</p>""", unsafe_allow_html=True)
+The physical E = 0 scattering wavefunction is found by K-matrix boundary matching at ā.
+Inside Region I the basis functions are <b>sin(k·r)</b> (propagating) and
+<b>sinh(κ·r) / sinh(κā)</b> (evanescent, normalized to 1 at ā).
+The normalized form stays in [0, 1] everywhere — no exponential overflow even when κā ≫ 1.
+The K-matrix linear system selects the unique combination satisfying the physical boundary
+conditions: u_c′(ā) + κ_ext u_c(ā) = 0 and u_e′(ā) = 1.
+</p>""", unsafe_allow_html=True)
 
-    r_end_sim  = a_bar * 1.5
-    r_sim      = np.linspace(1e-8, r_end_sim, 2000)
+    F1   = m_r_me / hbar2_2me           # correct physics convention
+    ev1  = evals_np                      # [λ₋, λ₊] from np.linalg.eigh
+    ec1  = evecs_np                      # ec1[:,i] = eigenvector i
+    k1   = np.sqrt(F1 * np.abs(ev1))    # interior wavenumbers
+    ev1_evan = ev1 > 0                  # True → evanescent mode
 
-    def dressed_wf(r, A, k, evanescent):
-        return A * (np.sinh(k * r) if evanescent else np.sin(k * r))
+    def _f1(k, r, ab, evanescent):
+        """Normalized interior basis: sin(kr) or sinh(kr)/sinh(kā), safe for large kā."""
+        if not evanescent:
+            return np.sin(k * r)
+        kab = k * ab
+        if kab < 500:                   # sinh representable in float64
+            return np.sinh(k * r) / np.sinh(kab)
+        return np.exp(k * (r - ab))    # ≡ sinh(kr)/sinh(kā) for large kā, always in (0,1]
 
-    Ap     = cos_t  / k_plus  if k_plus  > 1e-8 else cos_t  * 1e8
-    Am     = -sin_t / k_minus if k_minus > 1e-8 else -sin_t * 1e8
-    evan_p = (k_plus_type  == "evanescent")
-    evan_m = (k_minus_type == "evanescent")
-    fp     = dressed_wf(r_sim, Ap, k_plus,  evan_p)
-    fm     = dressed_wf(r_sim, Am, k_minus, evan_m)
-    ue_ana = cos_t * fp - sin_t * fm
-    uc_ana = sin_t * fp + cos_t * fm
+    def _fp1_at_ab(k, ab, evanescent):
+        """Derivative of _f1 at r = ab (scalar)."""
+        if not evanescent:
+            return k * np.cos(k * ab)
+        kab = k * ab
+        return float(k / np.tanh(kab)) if kab < 500 else float(k)  # k·coth(kā) → k for large kā
+
+    # Exterior closed-channel decay: use bare_c as threshold energy (bare_c = -Vc)
+    kappa_ext1 = np.sqrt(F1 * bare_c) if bare_c > 0 else 0.0
+    ab1 = a_bar
+
+    # 2×2 K-matrix at r = ā
+    M1 = np.zeros((2, 2))
+    for i in range(2):
+        ki = k1[i]; ev = bool(ev1_evan[i])
+        fpa = _fp1_at_ab(ki, ab1, ev)
+        M1[0, i] = ec1[1, i] * (fpa + kappa_ext1)     # closed-channel log-derivative BC
+        M1[1, i] = ec1[0, i] * fpa                    # open-channel normalization u_e′(ā)=1
+    try:
+        c1 = np.linalg.solve(M1, np.array([0.0, 1.0]))
+    except np.linalg.LinAlgError:
+        c1 = np.zeros(2)
+
+    # Scattering length from BC: a = ā − u_e(ā) (since u_e′(ā)=1)
+    u_e_ab1 = sum(c1[i] * ec1[0, i] * _f1(k1[i], ab1, ab1, bool(ev1_evan[i])) for i in range(2))
+    a_sim   = ab1 - u_e_ab1
+
+    # Wavefunction arrays
+    r_in1  = np.linspace(1e-8, ab1, 800)
+    r_ex1  = np.linspace(ab1, ab1 * 3.0, 800)
+
+    ue_in1 = sum(c1[i] * ec1[0, i] * _f1(k1[i], r_in1, ab1, bool(ev1_evan[i])) for i in range(2))
+    uc_in1 = sum(c1[i] * ec1[1, i] * _f1(k1[i], r_in1, ab1, bool(ev1_evan[i])) for i in range(2))
+    ue_ex1 = r_ex1 - a_sim
+    u_c_ab1 = sum(c1[i] * ec1[1, i] * _f1(k1[i], ab1, ab1, bool(ev1_evan[i])) for i in range(2))
+    uc_ex1  = (u_c_ab1 * np.exp(-kappa_ext1 * (r_ex1 - ab1)) if kappa_ext1 > 1e-12
+               else np.full_like(r_ex1, u_c_ab1))
+
+    r_full1  = np.concatenate([r_in1, r_ex1])
+    ue_full1 = np.concatenate([ue_in1, ue_ex1])
+    uc_full1 = np.concatenate([uc_in1, uc_ex1])
 
     fig_ode, axes_ode = plt.subplots(2, 2, figsize=(16, 9))
     fig_ode.patch.set_facecolor("#0e1117")
@@ -367,31 +410,31 @@ blow-up that plagues the evanescent channel in RK45.</p>""", unsafe_allow_html=T
         ax.xaxis.label.set_color("white"); ax.yaxis.label.set_color("white")
         ax.title.set_color("white")
         for sp in ax.spines.values(): sp.set_edgecolor("#333")
-        ax.axvline(a_bar, color="#ffd740", lw=1.2, ls="--", alpha=0.6)
+        ax.axvline(a_bar, color="#ffd740", lw=1.2, ls="--", alpha=0.6, label="ā")
 
     ax = axes_ode[0, 0]
-    ax.set_title("Bare channels — analytic (|e⟩ injection at r = 0)", color="white")
-    ax.plot(r_sim, ue_ana, color="#ff6ec7", lw=2, label="uₑ(r)  open")
-    ax.plot(r_sim, uc_ana, color="#69ff47", lw=2, label="u_c(r)  closed")
+    ax.set_title(f"Bare channels — K-matrix solution  (a = {a_sim/a0_nm:.1f} a₀)", color="white")
+    ax.plot(r_full1, ue_full1, color="#ff6ec7", lw=2, label="uₑ(r)  open")
+    ax.plot(r_full1, uc_full1, color="#69ff47", lw=2, label="u_c(r)  closed")
     ax.axhline(0, color="#444", lw=0.6); ax.set_xlabel("r (nm)"); ax.set_ylabel("amplitude")
     ax.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
 
     ax2 = axes_ode[0, 1]
-    ax2.set_title("Dressed channels u±(r)", color="white")
-    _lp = f"sin(k₊r)" if not evan_p else f"sinh(κ₊r)"
-    _lm = f"sin(k₋r)" if not evan_m else f"sinh(κ₋r)"
-    ax2.plot(r_sim, fp, color="#00e5ff", lw=2,
-             label=f"|+⟩  {_lp},  k={k_plus:.3f} nm⁻¹")
-    ax2.plot(r_sim, fm, color="#ce93d8", lw=2,
-             label=f"|−⟩  {_lm},  k={k_minus:.3f} nm⁻¹")
-    ax2.axhline(0, color="#444", lw=0.6); ax2.set_xlabel("r (nm)"); ax2.set_ylabel("amplitude")
+    ax2.set_title("Dressed-channel basis functions (normalized)", color="white")
+    fp1 = _f1(k1[1], r_in1, ab1, bool(ev1_evan[1]))
+    fm1 = _f1(k1[0], r_in1, ab1, bool(ev1_evan[0]))
+    _lp1 = "sin(k₊r)" if not ev1_evan[1] else "sinh(κ₊r)/sinh(κ₊ā)"
+    _lm1 = "sin(k₋r)" if not ev1_evan[0] else "sinh(κ₋r)/sinh(κ₋ā)"
+    ax2.plot(r_in1, fp1, color="#00e5ff", lw=2, label=f"v₊:  {_lp1}")
+    ax2.plot(r_in1, fm1, color="#ce93d8", lw=2, label=f"v₋:  {_lm1}")
+    ax2.axhline(0, color="#444", lw=0.6); ax2.set_xlabel("r (nm)"); ax2.set_ylabel("normalized")
     ax2.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
 
     ax3 = axes_ode[1, 0]
     ax3.set_title("Probability density  |u(r)|²", color="white")
-    ax3.plot(r_sim, ue_ana**2, color="#ff6ec7", lw=2, label="|uₑ|²")
-    ax3.plot(r_sim, uc_ana**2, color="#69ff47", lw=2, label="|u_c|²")
-    ax3.plot(r_sim, ue_ana**2 + uc_ana**2, color="#ffd740", lw=1.5, ls="--", label="total")
+    ax3.plot(r_full1, ue_full1**2, color="#ff6ec7", lw=2, label="|uₑ|²")
+    ax3.plot(r_full1, uc_full1**2, color="#69ff47", lw=2, label="|u_c|²")
+    ax3.plot(r_full1, ue_full1**2 + uc_full1**2, color="#ffd740", lw=1.5, ls="--", label="total")
     ax3.axhline(0, color="#444", lw=0.6); ax3.set_xlabel("r (nm)"); ax3.set_ylabel("|u|²")
     ax3.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
 
@@ -408,8 +451,8 @@ blow-up that plagues the evanescent channel in RK45.</p>""", unsafe_allow_html=T
         ax4.text(_b.get_x() + _b.get_width()/2, _v + 0.03, f"{_v:.3f}",
                  ha="center", color="white", fontsize=9)
 
-    fig_ode.suptitle("Analytic dressed-state solution — |e⟩ injection at r = 0",
-                     color="white", fontsize=13, y=1.01)
+    fig_ode.suptitle("Physical scattering solution — K-matrix boundary matching at ā  (interior: normalized sin/sinh · exterior: linear / exp decay)",
+                     color="white", fontsize=11, y=1.01)
     fig_ode.tight_layout(); st.pyplot(fig_ode, use_container_width=True); plt.close(fig_ode)
 
 
