@@ -2080,12 +2080,23 @@ additional closed channels and do not appear in this two-channel model.
         @st.cache_data(show_spinner=False)
         def _sw6_sweep(C6_key, r_min_key, r_max_key, W_key):
             _B0 = TABLE['s-wave']['B0']
-            B_coarse = np.linspace(-15.0, 22.0, 100)
-            B_fine   = np.concatenate([
-                np.linspace(_B0 - 0.3, _B0 - 0.002, 80),
-                np.linspace(_B0 + 0.002, _B0 + 0.3, 80),
+            # Multi-resolution grid: coarse background + fine near pole
+            # Pole width < 0.0001 G, so points at ±5e-5 G are required to see it
+            B_coarse    = np.linspace(-15.0, 22.0, 80)
+            B_medium    = np.concatenate([
+                np.linspace(_B0 - 0.5,  _B0 - 0.05, 30),
+                np.linspace(_B0 + 0.05, _B0 + 0.5,  30),
             ])
-            B_arr = np.sort(np.unique(np.concatenate([B_coarse, B_fine])))
+            B_fine      = np.concatenate([
+                np.linspace(_B0 - 0.05, _B0 - 0.002, 40),
+                np.linspace(_B0 + 0.002, _B0 + 0.05, 40),
+            ])
+            B_very_fine = np.concatenate([
+                np.linspace(_B0 - 0.002, _B0 - 5e-5, 50),
+                np.linspace(_B0 + 5e-5,  _B0 + 0.002, 50),
+            ])
+            B_arr = np.sort(np.unique(np.concatenate(
+                [B_coarse, B_medium, B_fine, B_very_fine])))
             a_arr = np.full(len(B_arr), np.nan)
             fac   = m_r_me / hbar2_2me
             for i, B in enumerate(B_arr):
@@ -2110,7 +2121,7 @@ additional closed channels and do not appear in this two-channel model.
         with st.spinner("Computing s-wave a(B) …"):
             _B6s, _a6s = _sw6_sweep(_C6_eV_6s, _r_min_6s, _r_max_6s, float(_W_fit_6s))
 
-        _clip6s     = 8000.0
+        _clip6s     = 30000.0
         _a_paper6s  = a_of_B_paper(_B6s)
         _B0_6s      = TABLE['s-wave']['B0']
         _Bs_6s      = TABLE['s-wave']['Bstar']
