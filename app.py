@@ -1239,7 +1239,7 @@ W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
     _B0s = TABLE['s-wave']['B0']; _Bss = TABLE['s-wave']['Bstar']
     _a_swave = a_bg * (_B_plot - _Bss) / (_B_plot - _B0s)
 
-    clip = 8000
+    clip = 3000
     fig_cmp, ax_cmp = plt.subplots(figsize=(14, 6))
     fig_cmp.patch.set_facecolor("#0e1117"); ax_cmp.set_facecolor("#0e1117")
     ax_cmp.tick_params(colors="white", labelsize=11)
@@ -1260,11 +1260,10 @@ W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
                    label=f"B₀ = {_B0s} G")
     ax_cmp.axvline(_Bss, color="#69ff47", lw=1.2, ls=":", alpha=0.7,
                    label=f"B* = {_Bss} G")
-    ax_cmp.set_yscale("symlog", linthresh=500)
-    ax_cmp.set_ylim(-clip, clip)
     ax_cmp.set_xlim(-15, 62)
+    ax_cmp.set_ylim(-clip, clip)
     ax_cmp.set_xlabel("Magnetic field B (G)", fontsize=12)
-    ax_cmp.set_ylabel("Scattering length a  (a₀)  [symlog]", fontsize=12)
+    ax_cmp.set_ylabel("Scattering length a  (a₀)", fontsize=12)
     ax_cmp.set_title("Scattering length a(B) — paper formula vs fitted s-wave model",
                      color="white", fontsize=12)
     ax_cmp.legend(fontsize=10, framealpha=0.2, labelcolor="white",
@@ -1819,9 +1818,9 @@ with tab6:
         _d2_6 = _d2n6*1e-9;  _d3_6 = _d3n6*1e-9
     with _cc6:
         st.markdown("**Couplings**")
-        _W12n6 = st.slider("W₁₂  (neV)", 0.0, 15.0, 1.0, 0.1, key="6_W12")
-        _W13n6 = st.slider("W₁₃  (neV)", 0.0, 15.0, 1.0, 0.1, key="6_W13")
-        _W23n6 = st.slider("W₂₃  (neV)", 0.0, 15.0, 0.5, 0.1, key="6_W23")
+        _W12n6 = st.slider("W₁₂  (neV)", 0.0, 15.0, 10.0, 0.1, key="6_W12")
+        _W13n6 = st.slider("W₁₃  (neV)", 0.0, 15.0, 10.0, 0.1, key="6_W13")
+        _W23n6 = st.slider("W₂₃  (neV)", 0.0, 15.0,  5.0, 0.1, key="6_W23")
         _W12_6 = _W12n6*1e-9;  _W13_6 = _W13n6*1e-9;  _W23_6 = _W23n6*1e-9
 
     # ── Potential matrix & diagonalisation ─────────────────────────────────────
@@ -1925,8 +1924,12 @@ with tab6:
         st.pyplot(_fig); plt.close(_fig)
 
     # ── Scattering length sweep: a vs δ₂ ──────────────────────────────────────
-    st.markdown("**Scattering length a(δ₂)**  — δ₃ and all couplings held fixed")
-    _d2_sw6 = np.linspace(0.5, 60.0, 250) * 1e-9
+    st.markdown("**3-channel scattering length a(δ₂)**  — genuine K-matrix, δ₃ and couplings fixed")
+    st.caption("Divergences (→ ±∞) are Feshbach-like resonances of the three-channel dressed-state system. "
+               "Increase W₁₂ or W₁₃ to broaden them; adjust δ₂ slider to explore the resonance region.")
+
+    # Sweep δ₂ over a wide positive range (δ₂ > 0 keeps ch-2 closed at E=0)
+    _d2_sw6 = np.linspace(0.2, 100.0, 1000) * 1e-9
     _a_sw6  = np.array([
         _a3ch6(
             np.array([[_V1_6, _W12_6, _W13_6],
@@ -1936,81 +1939,43 @@ with tab6:
         )
         for d in _d2_sw6
     ])
-    _a_sw6_pl = np.where(np.abs(_a_sw6) > 5000*a0_nm, np.nan, _a_sw6) / a0_nm
+    _clip6 = 5000 * a0_nm
+    _a_sw6_pl = np.where(np.abs(_a_sw6) > _clip6, np.nan, _a_sw6) / a0_nm
 
-    _fig, _ax = plt.subplots(figsize=(8, 3))
+    # find resonance positions (sign changes across divergences)
+    _res_pos6 = []
+    for _ii in range(len(_a_sw6_pl) - 1):
+        v1, v2 = _a_sw6_pl[_ii], _a_sw6_pl[_ii+1]
+        if np.isfinite(v1) and np.isfinite(v2) and v1*v2 < 0 and abs(v1-v2) > 500:
+            _res_pos6.append((_d2_sw6[_ii] + _d2_sw6[_ii+1]) * 0.5 * 1e9)
+
+    _fig, _ax = plt.subplots(figsize=(10, 4))
     _fig.patch.set_facecolor("#0e1117"); _ax.set_facecolor("#0e1117")
-    _ax.plot(_d2_sw6*1e9, _a_sw6_pl, "#69ff47", lw=1.5)
+    _ax.plot(_d2_sw6*1e9, _a_sw6_pl, "#69ff47", lw=1.8)
     _ax.axhline(0, color="white", lw=0.5, ls="--")
-    _ax.axvline(_d2n6, color="#ffd740", lw=1, ls="--", label=f"current δ₂ = {_d2n6:.1f} neV")
-    _ax.set_xlabel("δ₂  (neV)", color="white")
-    _ax.set_ylabel("a  (a₀)",  color="white")
-    _ax.set_title("3-channel scattering length vs channel-2 detuning", color="white")
+    _ax.axvline(_d2n6, color="#ffd740", lw=1.2, ls="--", label=f"current δ₂ = {_d2n6:.1f} neV")
+    for _rp in _res_pos6:
+        _ax.axvline(_rp, color="#ff6ec7", lw=1, ls=":", alpha=0.7)
+    if _res_pos6:
+        _ax.axvline(_res_pos6[0], color="#ff6ec7", lw=1, ls=":", alpha=0.7,
+                    label=f"resonance pole(s): {', '.join(f'{p:.1f}' for p in _res_pos6)} neV")
+    _ax.set_xlabel("δ₂  (neV)", color="white", fontsize=11)
+    _ax.set_ylabel("a  (a₀)",  color="white", fontsize=11)
+    _ax.set_title("3-channel K-matrix: scattering length vs channel-2 detuning", color="white", fontsize=11)
+    _ax.set_xlim(0, 100)
     _ax.set_ylim(-3000, 3000)
-    _ax.legend(facecolor="#1e1e2e", labelcolor="white")
+    _ax.legend(facecolor="#1e1e2e", labelcolor="white", fontsize=9)
     _ax.tick_params(colors="white")
     for _sp in _ax.spines.values(): _sp.set_edgecolor("#444")
-    st.pyplot(_fig); plt.close(_fig)
+    _fig.tight_layout()
+    st.pyplot(_fig, use_container_width=True); plt.close(_fig)
 
-    # ── Resonance demo: Breit-Wigner shape via detuning sliders ───────────────
-    st.markdown("---")
-    st.markdown("<h3 style='color:#69ff47;'>Resonance demo — Breit-Wigner scattering length</h3>",
-                unsafe_allow_html=True)
-    st.markdown("""
-<div style="background:#111827; border-left:4px solid #69ff47; border-radius:6px;
-            padding:0.6rem 1rem; font-size:0.85rem; color:#b0bec5; margin-bottom:0.6rem;">
-  A Feshbach resonance gives
-  <b style="color:#fff;">a(δ) = a<sub>bg</sub> (1 − Δ / (δ − δ<sub>pole</sub>))</b>.
-  Use the sliders to place the pole and set the resonance width Δ.
-  This is illustrative — to match the Cs s-wave pole at B₀ = −11.1 G, map
-  δ(B) = δμ · μ<sub>B</sub> · (B − B<sub>c</sub>) and fit W to that pole.
-</div>""", unsafe_allow_html=True)
-
-    _dr1, _dr2 = st.columns(2)
-    with _dr1:
-        _d_pole6 = st.slider("Pole position δ_pole  (neV)", -60.0, 60.0, 5.0, 0.5,
-                             key="demo_dpole")
-        _width6  = st.slider("Resonance width Δ  (neV)",     0.5,  50.0,  8.0, 0.5,
-                             key="demo_width")
-    with _dr2:
-        _abg6_d  = a_bg / a0_nm   # use Cs a_bg in a₀
-        st.markdown(f"""
-<div style="background:#111827; border-radius:8px; padding:0.8rem 1rem;
-            font-size:0.88rem; color:#b0bec5;">
-  <b style="color:#ffd740;">a_bg</b> = {_abg6_d:.0f} a₀  (Cs background)<br>
-  <b style="color:#ff6ec7;">pole</b> at δ = {_d_pole6:.1f} neV<br>
-  <b style="color:#69ff47;">zero</b> at δ = {_d_pole6 + _width6:.1f} neV  (δ_pole + Δ)<br>
-  <span style="color:#888; font-size:0.8rem;">Δ &gt; 0 → zero above pole (Cs s-wave).<br>
-  Δ &lt; 0 → zero below pole.</span>
-</div>""", unsafe_allow_html=True)
-
-    _delta_demo = np.linspace(-80.0, 80.0, 3000)
-    _denom_d = _delta_demo - _d_pole6
-    _denom_d = np.where(np.abs(_denom_d) < 1e-9,
-                        np.sign(_denom_d + 1e-9) * 1e-9, _denom_d)
-    _a_demo6 = _abg6_d * (1.0 - _width6 / _denom_d)
-    _a_demo6_pl = np.clip(_a_demo6, -15000, 15000)
-
-    _fig_d, _ax_d = plt.subplots(figsize=(10, 4))
-    _fig_d.patch.set_facecolor("#0e1117"); _ax_d.set_facecolor("#0e1117")
-    _ax_d.plot(_delta_demo, _a_demo6_pl, color="#69ff47", lw=2,
-               label=f"a(δ) — pole at {_d_pole6:.1f} neV, Δ = {_width6:.1f} neV")
-    _ax_d.axvline(_d_pole6,              color="#ff6ec7", lw=1.5, ls="--", label="pole δ_pole")
-    _ax_d.axvline(_d_pole6 + _width6,   color="#ffd740", lw=1.5, ls=":",  label="zero δ_pole + Δ")
-    _ax_d.axhline(_abg6_d,              color="#aaaaff", lw=1.0, ls=":",  label=f"a_bg = {_abg6_d:.0f} a₀")
-    _ax_d.axhline(0,                    color="#555",    lw=0.8)
-    _ax_d.set_xlabel("Channel-2 detuning δ  (neV)", color="white", fontsize=11)
-    _ax_d.set_ylabel("a  (a₀)",                      color="white", fontsize=11)
-    _ax_d.set_title("Breit-Wigner resonance demo — three-channel toy model",
-                    color="white", fontsize=11)
-    _ax_d.set_ylim(-15000, 15000)
-    _ax_d.legend(fontsize=9, framealpha=0.2, labelcolor="white",
-                 facecolor="#0e1117", edgecolor="#444")
-    _ax_d.tick_params(colors="white")
-    for _sp in _ax_d.spines.values(): _sp.set_edgecolor("#333")
-    _fig_d.tight_layout()
-    st.pyplot(_fig_d, use_container_width=True)
-    plt.close(_fig_d)
+    if _res_pos6:
+        st.success(f"Resonance pole(s) detected at δ₂ ≈ {', '.join(f'{p:.1f}' for p in _res_pos6)} neV  "
+                   f"— set the δ₂ slider to one of these values to sit at the resonance.")
+    else:
+        st.info("No resonance detected in δ₂ ∈ [0.2, 100] neV with current couplings. "
+                "Try increasing W₁₂ or W₁₃ above 5 neV.")
 
     # ── Wavefunction: K-matrix interior + analytic exterior ───────────────────
     # Three independent interior ODE solutions → combine so closed-channel BCs hold.
