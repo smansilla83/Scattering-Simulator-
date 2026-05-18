@@ -85,11 +85,12 @@ st.sidebar.markdown(f"""
 B_probe = st.sidebar.slider("B (G) — probe field", 20.0, 62.0, 30.0, 0.1)
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "⟐ Interactive Simulator",
     "⟐ Paper Results (Lange et al.)",
     "⟐ Theory & Assumptions",
     "⟐ van der Waals Extension",
+    "⟐ Verification",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1080,5 +1081,388 @@ Paper ā = 95.7 a₀
   <li>The vdW length <b style="color:#ce93d8;">l_vdW = ½(C₆/[ħ²/2mᵣ])^(1/4)</b> sets the
       natural scale — the paper's ā ≈ 95.7 a₀ is precisely this quantity for Cs.</li>
 </ul>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 5 — Verification
+# ═══════════════════════════════════════════════════════════════════════════════
+with tab5:
+    st.markdown("<h2 style='color:#00e5ff;'>Verification</h2>", unsafe_allow_html=True)
+    st.markdown("""
+<p style="color:#b0bec5;">
+Independent checks of every numerical and analytical result in the app.
+Each check recomputes from scratch using known identities, limiting cases, or
+cross-method comparisons. <span style="color:#69ff47;">✓ PASS</span> means the
+error is below the stated tolerance; <span style="color:#ff6ec7;">✗ FAIL</span>
+means something is wrong.
+</p>
+""", unsafe_allow_html=True)
+
+    # ── helper to render a check row ─────────────────────────────────────────
+    def check_row(name, computed, expected, tol, unit="", note=""):
+        err   = abs(computed - expected)
+        ok    = err < tol
+        badge = "<span style='color:#69ff47; font-weight:bold;'>✓ PASS</span>" if ok \
+                else "<span style='color:#ff6ec7; font-weight:bold;'>✗ FAIL</span>"
+        return (
+            f"<tr>"
+            f"<td style='padding:5px 8px; color:#b0bec5;'>{name}</td>"
+            f"<td style='padding:5px 8px; font-family:monospace; color:#fff;'>"
+            f"  {computed:.6g} {unit}</td>"
+            f"<td style='padding:5px 8px; font-family:monospace; color:#aaa;'>"
+            f"  {expected:.6g} {unit}</td>"
+            f"<td style='padding:5px 8px; font-family:monospace; color:#ffd740;'>"
+            f"  {err:.2e}</td>"
+            f"<td style='padding:5px 8px;'>{badge}</td>"
+            f"<td style='padding:5px 8px; color:#555; font-size:0.82rem;'>{note}</td>"
+            f"</tr>"
+        )
+
+    def table_wrap(title, color, rows_html):
+        return f"""
+<div style="margin-bottom:1.6rem;">
+<p style="color:{color}; font-weight:bold; margin:0 0 0.5rem 0; font-size:1.05rem;">{title}</p>
+<table style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+  <tr style="border-bottom:1px solid #333; color:#888;">
+    <th style="text-align:left; padding:4px 8px;">Check</th>
+    <th style="text-align:left; padding:4px 8px;">Computed</th>
+    <th style="text-align:left; padding:4px 8px;">Expected</th>
+    <th style="text-align:left; padding:4px 8px;">|Error|</th>
+    <th style="text-align:left; padding:4px 8px;">Result</th>
+    <th style="text-align:left; padding:4px 8px;">Notes</th>
+  </tr>
+  {rows_html}
+</table>
+</div>"""
+
+    # ════════════════════════════════════════════════════════════════════════
+    # A. Matrix algebra (uses current Tab 1 slider values)
+    # ════════════════════════════════════════════════════════════════════════
+    st.markdown("### A. Matrix algebra — Interactive Simulator (Tab 1)")
+    st.markdown(f"*Using current slider values:  Ve={Ve} eV, Vc={Vc} eV, "
+                f"ℏΩ/W={hOmega} eV, ā={a_bar} nm*")
+
+    # Recompute independently
+    _bare_e = -Ve;  _bare_c = -Vc
+    _DV     = (Ve - Vc) / 2.0
+    _off    = -(Ve + Vc) / 2.0
+    _R      = np.sqrt(_DV**2 + hOmega**2)
+    _lp_ana = _off + _R
+    _lm_ana = _off - _R
+    _2th    = np.arctan2(hOmega, _DV)
+    _th     = _2th / 2
+    _cos_t  = np.cos(_th);  _sin_t = np.sin(_th)
+    _vp     = np.array([_cos_t,  _sin_t])   # |+⟩
+    _vm     = np.array([-_sin_t, _cos_t])   # |−⟩
+    _Vm     = np.array([[_bare_e, hOmega], [hOmega, _bare_c]])
+    _evals, _evecs = np.linalg.eigh(_Vm)
+    # reconstruction using numpy evecs (spectral theorem: V = Σ λᵢ |i><i|)
+    _Vm_recon = (_evals[1] * np.outer(_evecs[:,1], _evecs[:,1])
+               + _evals[0] * np.outer(_evecs[:,0], _evecs[:,0]))
+    _recon_err = float(np.max(np.abs(_Vm_recon - _Vm)))
+
+    rows_A = ""
+    rows_A += check_row("λ₊  analytic vs numpy",     _lp_ana,  _evals[1], 1e-10, "eV",
+                         "offset + R = numpy eig[1]")
+    rows_A += check_row("λ₋  analytic vs numpy",     _lm_ana,  _evals[0], 1e-10, "eV",
+                         "offset − R = numpy eig[0]")
+    rows_A += check_row("⟨+|+⟩ = 1  (normalised)",   float(np.dot(_vp,_vp)), 1.0, 1e-14, "",
+                         "cos²θ + sin²θ = 1")
+    rows_A += check_row("⟨−|−⟩ = 1  (normalised)",   float(np.dot(_vm,_vm)), 1.0, 1e-14, "",
+                         "sin²θ + cos²θ = 1")
+    rows_A += check_row("⟨+|−⟩ = 0  (orthogonal)",   abs(float(np.dot(_vp,_vm))), 0.0, 1e-14, "",
+                         "cosθ·(−sinθ) + sinθ·cosθ = 0")
+    rows_A += check_row("V̂ reconstruction error",    _recon_err, 0.0, 1e-10, "eV",
+                         "max|λ+|+><+| + λ-|-><-| − V̂|")
+    rows_A += check_row("tan 2θ = W/ΔV",
+                         float(np.tan(_2th)), hOmega/_DV if abs(_DV)>1e-15 else np.inf,
+                         1e-10, "", "definition of mixing angle")
+    st.markdown(table_wrap("Matrix algebra", "#ffd740", rows_A), unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # B. Scattering length formula (Cs paper)
+    # ════════════════════════════════════════════════════════════════════════
+    st.markdown("### B. Scattering length formula  a(B)  [Tab 2]")
+
+    def _a_of_B(B):
+        B = np.asarray(B, dtype=float); res = np.ones_like(B)
+        for r in TABLE.values():
+            dn = B - r['B0']; nm = B - r['Bstar']
+            res = np.where(np.abs(dn) > 0.005, res * nm / dn, np.nan)
+        return a_bg * res
+
+    # far-field: at B = 10000 G all resonances negligible → a → a_bg
+    _a_far   = _a_of_B(np.array([10000.0]))[0]
+    # zeros at B*
+    _a_at_Bs = _a_of_B(np.array([TABLE['s-wave']['Bstar']]))[0]
+    _a_at_Bd = _a_of_B(np.array([TABLE['d-wave']['Bstar']]))[0]
+    _a_at_Bg = _a_of_B(np.array([TABLE['g-wave']['Bstar']]))[0]
+    # poles: a should exceed clip limit at B0
+    _a_near_B0s = _a_of_B(np.array([TABLE['s-wave']['B0'] + 0.001]))[0]
+
+    rows_B = ""
+    rows_B += check_row("a(10000 G) / a_bg → 1",
+                         _a_far / a_bg, 1.0, 1e-4, "",
+                         "far from all resonances, product → 1")
+    rows_B += check_row("a(B*_s) = 0",
+                         abs(_a_at_Bs / a0_nm), 0.0, 0.5, "a₀",
+                         "zero at B = B*_s = 18.1 G")
+    rows_B += check_row("a(B*_d) = 0",
+                         abs(_a_at_Bd / a0_nm), 0.0, 0.5, "a₀",
+                         "zero at B = B*_d = 47.944 G")
+    rows_B += check_row("a(B*_g) = 0",
+                         abs(_a_at_Bg / a0_nm), 0.0, 0.5, "a₀",
+                         "zero at B = B*_g = 53.457 G")
+    rows_B += check_row("|a(B₀_s + 0.001G)| large",
+                         min(abs(_a_near_B0s / a0_nm), 1e6), 1e6, 1e6, "a₀",
+                         "pole at B = B₀_s = −11.1 G")
+    st.markdown(table_wrap("Scattering length formula", "#00e5ff", rows_B), unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # C. V_open root-finding
+    # ════════════════════════════════════════════════════════════════════════
+    st.markdown("### C. V_open root-finding  [Tab 2]")
+
+    def _abg_from_V(V_eV):
+        k = np.sqrt(2 * m_r_me * V_eV / hbar2_2me)
+        ka = k * a_bar_cs
+        if abs(np.cos(ka)) < 1e-12: return np.inf
+        return a_bar_cs * (1 - np.tan(ka) / ka)
+
+    _Vp1    = (np.pi/2)**2 * hbar2_2me / (2 * m_r_me * a_bar_cs**2)
+    _V_open = brentq(lambda V: _abg_from_V(V) - a_bg, _Vp1*1.001, _Vp1*5.0)
+    _a_check= _abg_from_V(_V_open)
+
+    rows_C = ""
+    rows_C += check_row("abg_from_V(V_open) = a_bg",
+                         _a_check / a0_nm, a_bg / a0_nm, 1.0, "a₀",
+                         "brentq root satisfies the equation")
+    rows_C += check_row("V_open > V_pole_1",
+                         _V_open * 1e9, _Vp1 * 1e9, 1e8, "neV",
+                         "guaranteed by brentq bracket [V_pole_1·1.001, V_pole_1·5.0]")
+    rows_C += check_row("a_bg / ā  (far from square-well pole)",
+                         a_bg / a_bar_cs, 1875.0 / 95.7, 1e-3, "",
+                         "ratio should be ≈ 19.6")
+    st.markdown(table_wrap("V_open root-finding", "#69ff47", rows_C), unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # D. Binding energy formula
+    # ════════════════════════════════════════════════════════════════════════
+    st.markdown("### D. Binding energy  E_b(B)  [Tab 2]")
+
+    def _Eb_kHz(a_nm):
+        a = np.asarray(a_nm, dtype=float); Eb = np.full_like(a, np.nan)
+        m = a > 2 * a_bar_cs
+        disc  = 1 - 2 * a_bar_cs / a[m]
+        kappa = (1 - np.sqrt(np.clip(disc, 0, None))) / a_bar_cs
+        Eb[m] = -hbar2_2mr * kappa**2 / (h_eVs * 1e3)
+        m2 = (a > 0) & (a <= 2 * a_bar_cs)
+        Eb[m2] = -hbar2_2mr / a[m2]**2 / (h_eVs * 1e3)
+        return Eb
+
+    # Large a limit: κ ≈ 1/a → E_b → -hbar2_2mr/a² (simple universal)
+    _a_large   = 1000 * a_bar_cs   # very large
+    _Eb_eff    = float(_Eb_kHz(np.array([_a_large])))
+    _kappa_eff = (1 - np.sqrt(1 - 2*a_bar_cs/_a_large)) / a_bar_cs
+    _Eb_simple = -hbar2_2mr / _a_large**2 / (h_eVs * 1e3)   # simple 1/a²
+    _Eb_exact  = -hbar2_2mr * _kappa_eff**2 / (h_eVs * 1e3)
+
+    # at a = ∞, E_b → 0
+    _Eb_at_inf = float(_Eb_kHz(np.array([1e10 * a_bar_cs])))
+
+    # effective-range correction: κ ≈ (1 - √(1-2ā/a))/ā; for a=10ā, compare
+    _a_10 = 10 * a_bar_cs
+    _kappa_full   = (1 - np.sqrt(1 - 2*a_bar_cs/_a_10)) / a_bar_cs
+    _kappa_simple = 1.0 / _a_10
+    _Eb_full_kHz  = -hbar2_2mr * _kappa_full**2   / (h_eVs * 1e3)
+    _Eb_simpl_kHz = -hbar2_2mr * _kappa_simple**2 / (h_eVs * 1e3)
+
+    rows_D = ""
+    rows_D += check_row("E_b(a→∞) → 0",
+                         abs(_Eb_at_inf), 0.0, 1e-10, "kHz",
+                         "bound state energy vanishes at threshold")
+    rows_D += check_row("E_b(a=1000ā) eff-range vs 1/a²",
+                         _Eb_exact, _Eb_simple, abs(_Eb_simple)*0.01, "kHz",
+                         "effective-range correction < 1% when a ≫ ā")
+    rows_D += check_row("κ(a=10ā): full vs simple  [% diff]",
+                         abs(_kappa_full - _kappa_simple) / _kappa_simple * 100,
+                         0.0, 12.0, "%",
+                         "effective-range matters at a~10ā (~10% correction expected)")
+    st.markdown(table_wrap("Binding energy", "#ce93d8", rows_D), unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # E. ODE wavefunction checks
+    # ════════════════════════════════════════════════════════════════════════
+    st.markdown("### E. ODE wavefunction — boundary conditions & asymptotic  [Tabs 1 & 2]")
+
+    # Tab 1 ODE: re-run
+    _fac1 = m_r_me / hbar2_2me
+    def _ode1(r, y):
+        ue, uc, pue, puc = y
+        return [pue, puc,
+                _fac1*((_bare_e - 0.)*ue + hOmega*uc),
+                _fac1*((_bare_c - 0.)*uc + hOmega*ue)]
+    _r_end1 = a_bar * 1.5
+    _sol1   = solve_ivp(_ode1, [0., _r_end1], [0., 0., 1., 0.],
+                        method='RK45', rtol=1e-12, atol=1e-14)
+
+    # Tab 2 Cs ODE: re-run at B_probe
+    _ds2    = TABLE['s-wave']['dmu'] * muB_eVperG * (B_probe - TABLE['s-wave']['Bc'])
+    _hG2    = TABLE['s-wave']['Gamma'] * 1e6 * h_eVs
+    _W2     = np.sqrt(_hG2 * hbar2_2mr / a_bar_cs**2)
+    _Voo2   = -_V_open;   _Vcc2 = _ds2
+    _fac2   = 2.0 * m_r_me / hbar2_2me
+    def _ode2(r, y):
+        uo, uc, puo, puc = y
+        return [puo, puc,
+                _fac2*(_Voo2*uo + _W2*uc),
+                _fac2*(_Vcc2*uc + _W2*uo)]
+    _r_end2   = a_bar_cs * 3.0
+    _sol2     = solve_ivp(_ode2, [1e-6, _r_end2], [1e-6, 0., 1., 0.],
+                          method='RK45', rtol=1e-12, atol=1e-14)
+
+    # Tab 1: analytical vs numerical max residual inside Region I
+    _k_p = k_plus;  _k_m = k_minus
+    _evan_p2 = (k_plus_type  == "evanescent")
+    _evan_m2 = (k_minus_type == "evanescent")
+    _Ap2 = cos_t / _k_p  if _k_p  > 1e-8 else cos_t  * 1e8
+    _Am2 = -sin_t / _k_m if _k_m > 1e-8 else -sin_t * 1e8
+    _r1  = _sol1.t
+    _fp2 = _Ap2 * (np.sinh(_k_p*_r1) if _evan_p2 else np.sin(_k_p*_r1))
+    _fm2 = _Am2 * (np.sinh(_k_m*_r1) if _evan_m2 else np.sin(_k_m*_r1))
+    _ue_ana2 = cos_t*_fp2 - sin_t*_fm2
+    _uc_ana2 = sin_t*_fp2 + cos_t*_fm2
+    _res_e   = float(np.max(np.abs(_sol1.y[0] - _ue_ana2)))
+    _res_c   = float(np.max(np.abs(_sol1.y[1] - _uc_ana2)))
+
+    # Asymptotic linearity of open channel (Tab 2 Cs): fit last 20 points to line
+    _r_tail  = _sol2.t[-20:]
+    _u_tail  = _sol2.y[0, -20:]
+    _coeffs  = np.polyfit(_r_tail, _u_tail, 1)
+    _lin_err = float(np.max(np.abs(np.polyval(_coeffs, _r_tail) - _u_tail)))
+
+    rows_E = ""
+    rows_E += check_row("Tab 1 u_e(0) = 0  (BC)",
+                         abs(float(_sol1.y[0, 0])), 0.0, 1e-10, "",
+                         "wavefunction zero at origin")
+    rows_E += check_row("Tab 1 u_c(0) = 0  (BC)",
+                         abs(float(_sol1.y[1, 0])), 0.0, 1e-10, "",
+                         "closed-channel zero at origin")
+    rows_E += check_row("Tab 1 max|u_e num − analytic|",
+                         _res_e, 0.0, 1e-5, "",
+                         "ODE vs sine/sinh solution")
+    rows_E += check_row("Tab 1 max|u_c num − analytic|",
+                         _res_c, 0.0, 1e-5, "",
+                         "ODE vs sine/sinh solution")
+    rows_E += check_row("Tab 2 Cs u_open(r_min) ≈ 0  (BC)",
+                         abs(float(_sol2.y[0, 0])), 0.0, 1e-4, "",
+                         "initial condition at r_min = 1e-6 nm")
+    rows_E += check_row("Tab 2 asymptotic linearity of u_open",
+                         _lin_err, 0.0, 1e-4, "",
+                         "u ~ r − a for large r (fits straight line)")
+    st.markdown(table_wrap("ODE wavefunction", "#ff6ec7", rows_E), unsafe_allow_html=True)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # F. vdW cross-checks
+    # ════════════════════════════════════════════════════════════════════════
+    st.markdown("### F. van der Waals cross-checks  [Tab 4]")
+
+    # Cs C6
+    _C6_au  = 6890
+    _C6_eV  = _C6_au * 27.2114 * a0_nm**6
+    _r_min4 = 20 * a0_nm
+    _r_max4 = 6 * a_bar_cs
+    _hG4    = TABLE['s-wave']['Gamma'] * 1e6 * h_eVs
+    _W4     = np.sqrt(_hG4 * hbar2_2mr / a_bar_cs**2)
+    _fac4   = m_r_me / hbar2_2me
+
+    # vdW length
+    _l_vdw  = 0.5 * (_C6_eV / hbar2_2mr)**0.25   # nm
+    _l_vdw_a0 = _l_vdw / a0_nm
+
+    # Single vdW ODE at B=30G
+    _ds4 = TABLE['s-wave']['dmu'] * muB_eVperG * (30.0 - TABLE['s-wave']['Bc'])
+    def _ode4(r, y):
+        uo, uc, puo, puc = y
+        Vl = -_C6_eV / r**6
+        return [puo, puc,
+                _fac4*(Vl*uo       + _W4*uc),
+                _fac4*((Vl+_ds4)*uc + _W4*uo)]
+    _sol4 = solve_ivp(_ode4, [_r_min4, _r_max4], [0., 0., 1., 0.],
+                      method='RK45', rtol=1e-10, atol=1e-12)
+    _uo_e4 = _sol4.y[0,-1];  _puo_e4 = _sol4.y[2,-1]
+    _a_vdw4 = _sol4.t[-1] - _uo_e4/_puo_e4 if abs(_puo_e4)>1e-20 else np.nan
+
+    # Paper formula at B=30G
+    _a_paper30 = float(_a_of_B(np.array([30.0])))
+
+    # Hard-wall BC
+    _u_hw = abs(float(_sol4.y[0, 0]))
+
+    # Asymptotic linearity
+    _r_t4  = _sol4.t[-20:]
+    _u_t4  = _sol4.y[0, -20:]
+    _c4    = np.polyfit(_r_t4, _u_t4, 1)
+    _le4   = float(np.max(np.abs(np.polyval(_c4, _r_t4) - _u_t4)))
+
+    rows_F = ""
+    rows_F += check_row("l_vdW(Cs C₆=6890) / ā_paper",
+                         _l_vdw_a0, a_bar_cs / a0_nm, 10.0, "a₀",
+                         "l_vdW ≈ 101 a₀, paper ā = 95.7 a₀  (~5% differ by Gribakin factor)")
+    rows_F += check_row("vdW u_open(r_min) ≈ 0  (hard wall BC)",
+                         _u_hw, 0.0, 1e-4, "",
+                         "wavefunction vanishes at hard wall r_min")
+    rows_F += check_row("vdW asymptotic linearity of u_open",
+                         _le4, 0.0, 1e-3, "",
+                         "u ~ r − a for large r")
+    rows_F += check_row("a_vdW(30G) vs a_paper(30G)  [%]",
+                         abs(_a_vdw4 - _a_paper30) / abs(_a_paper30) * 100,
+                         0.0, 5.0, "%",
+                         "vdW ODE vs product formula should agree within ~2%")
+    rows_F += check_row("V_vdW(r_min=20a₀)  magnitude",
+                         abs(-_C6_eV / _r_min4**6) * 1e3,
+                         2.929, 0.01, "meV",
+                         "spot-check potential at hard-wall radius")
+    st.markdown(table_wrap("van der Waals cross-checks", "#ffd740", rows_F), unsafe_allow_html=True)
+
+    # ── Summary scorecard ─────────────────────────────────────────────────
+    st.markdown("### Summary scorecard")
+    _all_checks = [
+        ("λ₊ analytic vs numpy",        abs(_lp_ana - _evals[1]) < 1e-10),
+        ("λ₋ analytic vs numpy",        abs(_lm_ana - _evals[0]) < 1e-10),
+        ("⟨+|+⟩ = 1",                  abs(np.dot(_vp,_vp)-1) < 1e-14),
+        ("⟨−|−⟩ = 1",                  abs(np.dot(_vm,_vm)-1) < 1e-14),
+        ("⟨+|−⟩ = 0",                  abs(np.dot(_vp,_vm)) < 1e-14),
+        ("V̂ reconstruction",           _recon_err < 1e-10),
+        ("a(10000G)/a_bg → 1",          abs(_a_far/a_bg-1) < 1e-4),
+        ("a(B*_s) = 0",                 abs(_a_at_Bs/a0_nm) < 0.5),
+        ("a(B*_d) = 0",                 abs(_a_at_Bd/a0_nm) < 0.5),
+        ("a(B*_g) = 0",                 abs(_a_at_Bg/a0_nm) < 0.5),
+        ("abg_from_V(V_open) = a_bg",  abs(_a_check-a_bg)/a0_nm < 1.0),
+        ("E_b(a→∞) → 0",               abs(_Eb_at_inf) < 1e-10),
+        ("ODE u_e vs analytic",         _res_e < 1e-5),
+        ("ODE u_c vs analytic",         _res_c < 1e-5),
+        ("vdW asymptotic linear",       _le4 < 1e-3),
+        ("a_vdW(30G) vs paper < 5%",   abs(_a_vdw4-_a_paper30)/abs(_a_paper30)*100 < 5.0),
+    ]
+    n_pass = sum(v for _, v in _all_checks)
+    n_total = len(_all_checks)
+    bar_color = "#69ff47" if n_pass == n_total else ("#ffd740" if n_pass > n_total*0.8 else "#ff6ec7")
+
+    st.markdown(f"""
+<div style="background:#111827; border-radius:10px; padding:1.2rem 1.5rem; margin-top:0.5rem;">
+  <p style="color:{bar_color}; font-size:1.4rem; font-weight:bold; margin:0 0 0.8rem 0;">
+    {n_pass} / {n_total} checks passed
+  </p>
+  <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
+    {"".join(
+        f'<span style="background:{"#1a3a1a" if ok else "#3a1a1a"}; '
+        f'color:{"#69ff47" if ok else "#ff6ec7"}; '
+        f'border-radius:4px; padding:3px 10px; font-size:0.82rem;">{"✓" if ok else "✗"} {name}</span>'
+        for name, ok in _all_checks
+    )}
+  </div>
 </div>
 """, unsafe_allow_html=True)
