@@ -1959,59 +1959,134 @@ with tab6:
         _ax.set_aspect("equal"); _ax.axis("off")
         st.pyplot(_fig); plt.close(_fig)
 
-    # ── Scattering length sweep: a vs δ₂ ──────────────────────────────────────
-    st.markdown("**3-channel scattering length a(δ₂)**  — genuine K-matrix, δ₃ and couplings fixed")
-    st.caption("Divergences (→ ±∞) are Feshbach-like resonances of the three-channel dressed-state system. "
-               "Increase W₁₂ or W₁₃ to broaden them; adjust δ₂ slider to explore the resonance region.")
+    # ── Resonance finder: scan det(M) for genuine zeros ───────────────────────
+    st.markdown("**3-channel resonance finder**  — scans det M(δ₂) for sign changes")
+    st.caption("det M = 0 is the exact condition for the matching matrix to be singular — "
+               "a genuine scattering resonance. Sign changes are detected from the solver, "
+               "with no Breit-Wigner approximation involved.")
 
-    # Sweep δ₂ over a wide positive range (δ₂ > 0 keeps ch-2 closed at E=0)
-    _d2_sw6 = np.linspace(0.2, 100.0, 1000) * 1e-9
-    _a_sw6  = np.array([
-        _a3ch6(
-            np.array([[_V1_6, _W12_6, _W13_6],
-                      [_W12_6, _V1_6+d, _W23_6],
-                      [_W13_6, _W23_6,  _V1_6+_d3_6]]),
-            d, _d3_6, _ab6, _F6
+    def _a3ch6_and_det(d2, d3, W12, W13, W23, ab, F, V1):
+        """Return (a, det(M).real) for the 3-channel square-well at E=0."""
+        if d2 <= 0 or d3 <= 0:
+            return np.nan, np.nan
+        Vm = np.array([[V1,       W12,      W13      ],
+                       [W12,      V1+d2,    W23      ],
+                       [W13,      W23,      V1+d3    ]])
+        ev, ec = np.linalg.eigh(Vm)
+        ks = np.where(ev < 0,
+                      np.sqrt(F*np.abs(ev)),
+                      1j*np.sqrt(np.maximum(F*ev, 0.0)))
+        kp1 = np.sqrt(F*d2);  kp2 = np.sqrt(F*d3)
+        M = np.zeros((3, 3), dtype=complex)
+        for _i in range(3):
+            _ki = ks[_i]; _sa = np.sin(_ki*ab); _ca = np.cos(_ki*ab)
+            M[0, _i] = ec[1, _i] * (_ki*_ca + kp1*_sa)
+            M[1, _i] = ec[2, _i] * (_ki*_ca + kp2*_sa)
+            M[2, _i] = ec[0, _i] * _ki*_ca
+        det_val = float(np.linalg.det(M).real)
+        try:
+            al = np.linalg.solve(M, np.array([0.0, 0.0, 1.0], dtype=complex))
+            u0 = float(np.sum(al * ec[0, :] * np.sin(ks*ab)).real)
+            return float(ab - u0), det_val
+        except np.linalg.LinAlgError:
+            return np.nan, det_val
+
+    # Wide scan: 4000 points, δ₂ > 0 (closed channel)
+    _d2_scan_neV = np.linspace(0.01, 500.0, 4000)
+    _d2_scan_eV  = _d2_scan_neV * 1e-9
+    _a_scan6   = np.empty(4000)
+    _det_scan6 = np.empty(4000)
+    for _si, _d2s in enumerate(_d2_scan_eV):
+        _a_scan6[_si], _det_scan6[_si] = _a3ch6_and_det(
+            _d2s, _d3_6, _W12_6, _W13_6, _W23_6, _ab6, _F6, _V1_6
         )
-        for d in _d2_sw6
-    ])
-    _clip6 = 5000 * a0_nm
-    _a_sw6_pl = np.where(np.abs(_a_sw6) > _clip6, np.nan, _a_sw6) / a0_nm
 
-    # find resonance positions (sign changes across divergences)
-    _res_pos6 = []
-    for _ii in range(len(_a_sw6_pl) - 1):
-        v1, v2 = _a_sw6_pl[_ii], _a_sw6_pl[_ii+1]
-        if np.isfinite(v1) and np.isfinite(v2) and v1*v2 < 0 and abs(v1-v2) > 500:
-            _res_pos6.append((_d2_sw6[_ii] + _d2_sw6[_ii+1]) * 0.5 * 1e9)
+    # Find sign changes in det(M)
+    _pole_idx6 = [
+        _ii for _ii in range(len(_det_scan6) - 1)
+        if np.isfinite(_det_scan6[_ii]) and np.isfinite(_det_scan6[_ii+1])
+        and _det_scan6[_ii] * _det_scan6[_ii+1] < 0
+    ]
+    _pole_neV6 = [0.5*(_d2_scan_neV[i]+_d2_scan_neV[i+1]) for i in _pole_idx6]
 
-    _fig, _ax = plt.subplots(figsize=(10, 4))
-    _fig.patch.set_facecolor("#0e1117"); _ax.set_facecolor("#0e1117")
-    _ax.plot(_d2_sw6*1e9, _a_sw6_pl, "#69ff47", lw=1.8)
-    _ax.axhline(0, color="white", lw=0.5, ls="--")
-    _ax.axvline(_d2n6, color="#ffd740", lw=1.2, ls="--", label=f"current δ₂ = {_d2n6:.1f} neV")
-    for _rp in _res_pos6:
-        _ax.axvline(_rp, color="#ff6ec7", lw=1, ls=":", alpha=0.7)
-    if _res_pos6:
-        _ax.axvline(_res_pos6[0], color="#ff6ec7", lw=1, ls=":", alpha=0.7,
-                    label=f"resonance pole(s): {', '.join(f'{p:.1f}' for p in _res_pos6)} neV")
-    _ax.set_xlabel("δ₂  (neV)", color="white", fontsize=11)
-    _ax.set_ylabel("a  (a₀)",  color="white", fontsize=11)
-    _ax.set_title("3-channel K-matrix: scattering length vs channel-2 detuning", color="white", fontsize=11)
-    _ax.set_xlim(0, 100)
-    _ax.set_ylim(-3000, 3000)
-    _ax.legend(facecolor="#1e1e2e", labelcolor="white", fontsize=9)
-    _ax.tick_params(colors="white")
-    for _sp in _ax.spines.values(): _sp.set_edgecolor("#444")
-    _fig.tight_layout()
-    st.pyplot(_fig, use_container_width=True); plt.close(_fig)
+    # Helper: clip det to 2–98th percentile for plotting
+    def _clip_det(arr):
+        fin = arr[np.isfinite(arr)]
+        if len(fin) < 4:
+            return arr
+        return np.clip(arr, np.percentile(fin, 2), np.percentile(fin, 98))
 
-    if _res_pos6:
-        st.success(f"Resonance pole(s) detected at δ₂ ≈ {', '.join(f'{p:.1f}' for p in _res_pos6)} neV  "
-                   f"— set the δ₂ slider to one of these values to sit at the resonance.")
+    if _pole_idx6:
+        st.success(
+            f"Resonance pole(s) found at δ₂ ≈ "
+            f"{', '.join(f'{p:.1f}' for p in _pole_neV6)} neV — det M changes sign here."
+        )
+        # Zoom around first pole ±20 neV, 3000 points
+        _p0 = _pole_neV6[0]
+        _d2_zoom_neV = np.linspace(max(0.01, _p0-20), _p0+20, 3000)
+        _d2_zoom_eV  = _d2_zoom_neV * 1e-9
+        _a_zoom6 = np.array([
+            _a3ch6_and_det(_d2z, _d3_6, _W12_6, _W13_6, _W23_6, _ab6, _F6, _V1_6)[0]
+            for _d2z in _d2_zoom_eV
+        ])
+        _a_zoom_a0 = _a_zoom6 / a0_nm
+        _a_zoom_pl = np.where(np.abs(_a_zoom_a0) > 30000, np.nan, _a_zoom_a0)
+
+        _fig, (_ax1, _ax2) = plt.subplots(1, 2, figsize=(14, 4))
+        _fig.patch.set_facecolor("#0e1117")
+
+        _ax1.set_facecolor("#0e1117")
+        _ax1.plot(_d2_scan_neV, _clip_det(np.where(np.isfinite(_det_scan6), _det_scan6, np.nan)),
+                  "#ffd740", lw=1.2)
+        _ax1.axhline(0, color="white", lw=0.8, ls="--", label="det M = 0")
+        for _pp in _pole_neV6:
+            _ax1.axvline(_pp, color="#ff6ec7", lw=1.5, ls="--", alpha=0.9)
+        _ax1.set_xlabel("δ₂  (neV)", color="white", fontsize=10)
+        _ax1.set_ylabel("det M  (arb.)", color="white", fontsize=10)
+        _ax1.set_title("Wide scan: det(M(δ₂))", color="white", fontsize=10)
+        _ax1.legend(facecolor="#1e1e2e", labelcolor="white", fontsize=8)
+        _ax1.tick_params(colors="white")
+        for _sp in _ax1.spines.values(): _sp.set_edgecolor("#444")
+
+        _ax2.set_facecolor("#0e1117")
+        _ax2.plot(_d2_zoom_neV, _a_zoom_pl, "#69ff47", lw=1.8)
+        _ax2.axhline(0, color="white", lw=0.5, ls="--")
+        _ax2.axvline(_p0, color="#ff6ec7", lw=1.2, ls="--", label=f"pole ≈ {_p0:.1f} neV")
+        _ax2.axvline(_d2n6, color="#ffd740", lw=1, ls=":", label=f"current δ₂ = {_d2n6:.1f} neV")
+        _ax2.set_xlabel("δ₂  (neV)", color="white", fontsize=10)
+        _ax2.set_ylabel("a  (a₀)", color="white", fontsize=10)
+        _ax2.set_title(f"Zoomed a(δ₂) near resonance at {_p0:.1f} neV", color="white", fontsize=10)
+        _ax2.set_ylim(-30000, 30000)
+        _ax2.legend(facecolor="#1e1e2e", labelcolor="white", fontsize=9)
+        _ax2.tick_params(colors="white")
+        for _sp in _ax2.spines.values(): _sp.set_edgecolor("#444")
+
+        _fig.tight_layout()
+        st.pyplot(_fig, use_container_width=True); plt.close(_fig)
+        st.caption(
+            f"Pole(s) at δ₂ ≈ {', '.join(f'{p:.1f}' for p in _pole_neV6)} neV.  "
+            "Set the δ₂ slider to one of these values to sit at a resonance and see "
+            "the wavefunction distortion in the panel below."
+        )
     else:
-        st.info("No resonance detected in δ₂ ∈ [0.2, 100] neV with current couplings. "
-                "Try increasing W₁₂ or W₁₃ above 5 neV.")
+        _fig, _ax = plt.subplots(figsize=(10, 3))
+        _fig.patch.set_facecolor("#0e1117"); _ax.set_facecolor("#0e1117")
+        _ax.plot(_d2_scan_neV, _clip_det(np.where(np.isfinite(_det_scan6), _det_scan6, np.nan)),
+                 "#ffd740", lw=1.2, label="det M")
+        _ax.axhline(0, color="#ff6ec7", lw=1, ls="--", label="det = 0  (resonance condition)")
+        _ax.set_xlabel("δ₂  (neV)", color="white")
+        _ax.set_ylabel("det M", color="white")
+        _ax.set_title("det(M) — no sign change found in [0.01, 500] neV", color="white")
+        _ax.legend(facecolor="#1e1e2e", labelcolor="white")
+        _ax.tick_params(colors="white")
+        for _sp in _ax.spines.values(): _sp.set_edgecolor("#444")
+        _fig.tight_layout()
+        st.pyplot(_fig, use_container_width=True); plt.close(_fig)
+        st.info(
+            "No three-channel pole was found for the current parameters in δ₂ ∈ [0.01, 500] neV.  "
+            "A closed channel only produces a Feshbach resonance if its bound state is tuned "
+            "near the open-channel threshold. Try increasing W₁₂ or W₁₃, or adjusting V₁ and ā."
+        )
 
     # ── Wavefunction: K-matrix interior + analytic exterior ───────────────────
     # Three independent interior ODE solutions → combine so closed-channel BCs hold.
