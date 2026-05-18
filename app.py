@@ -560,6 +560,83 @@ with tab2:
 </div>
 """, unsafe_allow_html=True)
 
+    # Mixing angle vs B
+    st.markdown("<h3 style='color:#00e5ff;'>Mixing Angle θ(B) — field-driven evolution</h3>",
+                unsafe_allow_html=True)
+    st.markdown("""
+<p style="color:#b0bec5; font-size:0.93rem; margin:0 0 0.8rem 0;">
+<b style="color:#fff;">W is a fitted constant</b> (from Γ in Table I) — it does <i>not</i> change with B.
+What changes with field is the detuning δ(B) = δμ·μB·(B − Bc), which shifts the closed-channel
+threshold V_cc. This makes ΔV = (V_oo − V_cc)/2 field-dependent, so the mixing angle
+<b style="color:#ce93d8;">θ(B) = ½ arctan(W / ΔV)</b> rotates continuously across the resonance.
+Near B = Bc the channels are degenerate (ΔV → 0) and θ → 45°; far from resonance θ → 0° or 90°.
+</p>
+""", unsafe_allow_html=True)
+
+    # Compute θ(B) across the sweep
+    def abg_from_V_sweep(V_eV):
+        k  = np.sqrt(2 * m_r_me * V_eV / hbar2_2me)
+        ka = k * a_bar_cs
+        if abs(np.cos(ka)) < 1e-12: return np.inf
+        return a_bar_cs * (1 - np.tan(ka) / ka)
+
+    _V_pole_1  = (np.pi/2)**2 * hbar2_2me / (2 * m_r_me * a_bar_cs**2)
+    _V_open_eV = brentq(lambda V: abg_from_V_sweep(V) - a_bg, _V_pole_1*1.001, _V_pole_1*5.0)
+    _hGamma_s  = TABLE['s-wave']['Gamma'] * 1e6 * h_eVs
+    _W_eV      = np.sqrt(_hGamma_s * hbar2_2mr / a_bar_cs**2)
+    _V_oo      = -_V_open_eV
+
+    theta_B = np.zeros_like(B_arr)
+    lam_p_B = np.zeros_like(B_arr)
+    lam_m_B = np.zeros_like(B_arr)
+    for i, B in enumerate(B_arr):
+        _delta_s = TABLE['s-wave']['dmu'] * muB_eVperG * (B - TABLE['s-wave']['Bc'])
+        _V_cc    = _delta_s
+        _DV      = (_V_oo - _V_cc) / 2
+        _off     = (_V_oo + _V_cc) / 2
+        _R       = np.sqrt(_DV**2 + _W_eV**2)
+        theta_B[i] = np.degrees(np.arctan2(_W_eV, _DV) / 2)
+        lam_p_B[i] = _off + _R
+        lam_m_B[i] = _off - _R
+
+    fig_th, axes_th = plt.subplots(1, 2, figsize=(16, 5))
+    fig_th.patch.set_facecolor("#0e1117")
+    for ax in axes_th:
+        ax.set_facecolor("#0e1117"); ax.tick_params(colors="white", labelsize=10)
+        ax.xaxis.label.set_color("white"); ax.yaxis.label.set_color("white")
+        ax.title.set_color("white")
+        for sp in ax.spines.values(): sp.set_edgecolor("#333")
+        ax.set_xlim(20, 62)
+        for nm, r in TABLE.items():
+            ax.axvline(r['B0'], color="#ffd740", lw=1, ls="--", alpha=0.4)
+            ax.axvline(r['Bc'], color="#ff6ec7", lw=1, ls=":",  alpha=0.4)
+
+    ax_th = axes_th[0]
+    ax_th.plot(B_arr, theta_B, color="#ce93d8", lw=2)
+    ax_th.axhline(45, color="#aaa", lw=0.8, ls="--", alpha=0.5, label="θ = 45° (resonance)")
+    ax_th.scatter([B_probe], [np.interp(B_probe, B_arr, theta_B)],
+                  color="#00e5ff", s=80, zorder=6)
+    ax_th.set_xlabel("Magnetic field B (G)", fontsize=12)
+    ax_th.set_ylabel("Mixing angle θ (degrees)", fontsize=12)
+    ax_th.set_title("θ(B) — driven by δ(B), not by W", color="white", fontsize=12)
+    ax_th.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
+    ax_th.text(TABLE['s-wave']['Bc']+0.3, 5, "Bc_s", color="#ff6ec7", fontsize=8)
+
+    ax_lm = axes_th[1]
+    ax_lm.plot(B_arr, lam_p_B * 1e9, color="#69ff47", lw=2, label="λ₊(B)")
+    ax_lm.plot(B_arr, lam_m_B * 1e9, color="#ff6ec7", lw=2, label="λ₋(B)")
+    ax_lm.axhline(0, color="#555", lw=0.8, ls="--")
+    ax_lm.scatter([B_probe], [np.interp(B_probe, B_arr, lam_p_B)*1e9], color="#69ff47", s=80, zorder=6)
+    ax_lm.scatter([B_probe], [np.interp(B_probe, B_arr, lam_m_B)*1e9], color="#ff6ec7", s=80, zorder=6)
+    ax_lm.set_xlabel("Magnetic field B (G)", fontsize=12)
+    ax_lm.set_ylabel("Eigenvalue (neV)", fontsize=12)
+    ax_lm.set_title("Dressed eigenvalues λ±(B)", color="white", fontsize=12)
+    ax_lm.legend(fontsize=9, framealpha=0.15, labelcolor="white", facecolor="#0e1117")
+
+    fig_th.suptitle(f"W = {_W_eV*1e9:.4f} neV  (constant, from Γ_s = {TABLE['s-wave']['Gamma']} MHz)",
+                    color="#ffd740", fontsize=11)
+    fig_th.tight_layout(); st.pyplot(fig_th, use_container_width=True); plt.close(fig_th)
+
     # Cs ODE wavefunction
     st.markdown(f"<h3 style='color:#00e5ff;'>Numerical Wavefunction at B = {B_probe:.1f} G  (E = 0)</h3>",
                 unsafe_allow_html=True)
@@ -676,6 +753,28 @@ Writing the traceless part with ΔV = (V_oo − V_cc)/2 and coupling W:
 Inside Region I the wavefunction propagates (or decays) in each dressed channel
 with wavenumber k± = √(2m_r(E − λ±))/ħ. A channel is **propagating** when E > λ±
 and **evanescent** when E < λ±.
+""")
+
+    st.markdown("#### Field dependence of θ: W is constant, δ(B) is not")
+    st.markdown("""
+A key point of the Lange et al. model: **W does not depend on B**.
+It is a single fitted constant per resonance, determined from the measured resonance width Γ:
+""")
+    st.latex(r"W \approx \sqrt{\frac{\hbar\Gamma \cdot \hbar^2/(2m_r)}{\bar{a}^2}}")
+    st.markdown("""
+What varies with field is the **detuning** δ(B) = δμ·μB·(B − Bc), which shifts the
+closed-channel threshold:
+""")
+    st.latex(r"V_\mathrm{cc}(B) = \delta\mu \cdot \mu_B \cdot (B - B_c)")
+    st.markdown(r"""
+So ΔV(B) = (V_oo − V_cc(B))/2 is B-dependent, and therefore the mixing angle:
+
+$$\theta(B) = \tfrac{1}{2}\arctan\!\left(\frac{W}{\Delta V(B)}\right)$$
+
+rotates continuously with field. Far from resonance (|ΔV| ≫ W) θ → 0° (channels nearly decoupled);
+at the bare-state crossing B = Bc (ΔV → 0) θ → 45° (maximum mixing);
+past resonance θ → 90°. The fit to experimental binding energies E_b(B) determines all five
+parameters per resonance: B0, B*, Bc, δμ, Γ.
 """)
 
     # ── 5. Scattering length
