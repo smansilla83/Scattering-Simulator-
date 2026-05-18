@@ -85,10 +85,9 @@ st.sidebar.markdown(f"""
 B_probe = st.sidebar.slider("B (G) — probe field", -15.0, 62.0, 30.0, 0.1)
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "⟐ Interactive Simulator",
     "⟐ Paper Results (Lange et al.)",
-    "⟐ Theory & Assumptions",
     "⟐ van der Waals Extension",
     "⟐ Verification",
     "⟐ Three-Channel Models",
@@ -823,209 +822,6 @@ Increase α to see stronger channel mixing.</span>
 """, unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — Theory & Assumptions
-# ═══════════════════════════════════════════════════════════════════════════════
-with tab3:
-    st.markdown("<h2 style='color:#00e5ff;'>Theory & Assumptions</h2>", unsafe_allow_html=True)
-    st.markdown("""
-<p style="color:#b0bec5;">
-All calculations follow <b style="color:#fff;">Lange et al., PRA 79, 013622 (2009)</b>.
-The model describes two Cs atoms scattering near Feshbach resonances using a
-two-channel square-well potential.
-</p>
-""", unsafe_allow_html=True)
-
-    # ── 1. Physical setup
-    st.markdown("### 1. Physical Setup")
-    st.markdown("""
-Two ultracold Cs atoms in state |F=3, m_F=3⟩ collide at low energy.
-The relative motion is governed by a two-channel (open + closed) radial Schrödinger equation.
-A magnetic field **B** tunes the energy of the closed channel relative to the open one
-via the differential magnetic moment δμ.
-""")
-    st.markdown("**Reduced mass:**")
-    st.latex(r"m_r = \frac{m_{\mathrm{Cs}}}{2} = \frac{132.905\,\mathrm{amu}}{2}")
-
-    # ── 2. Region I potential matrix
-    st.markdown("### 2. Two-Channel Square-Well Potential (Region I,  r < ā)")
-    st.markdown("""
-Inside the interaction range ā (mean scattering length), the potential is **constant**,
-allowing exact analytic diagonalisation. The bare-channel potential matrix is:
-""")
-    st.latex(r"\hat{V} = \begin{pmatrix} V_\mathrm{oo} & W \\ W & V_\mathrm{cc}(B) \end{pmatrix}")
-    st.markdown("""
-- **V_oo = −V_open** — open-channel well depth (attractive). Fixed by requiring the single-channel
-  scattering length equals a_bg.
-- **V_cc(B) = δμ(B − Bc)** — closed-channel threshold, shifted by the magnetic detuning.
-- **W = ℏΩ** — interchannel coupling (off-diagonal), related to the resonance width Γ. The paper calls it W; quantum optics calls the same quantity ℏΩ where Ω is the Rabi frequency. Both notations refer to the identical off-diagonal matrix element.
-""")
-    st.markdown("The magnetic detuning for each resonance i:")
-    st.latex(r"\delta_i(B) = \delta\mu_i \cdot \mu_B \cdot (B - B_{c,i})")
-
-    # ── 3. Coupled Schrödinger equation
-    st.markdown("### 3. Coupled-Channel Schrödinger Equation")
-    st.markdown("The radial wavefunction vector **u** = (u_open, u_closed)ᵀ satisfies:")
-    st.latex(r"-\frac{\hbar^2}{2m_r}\frac{d^2\mathbf{u}}{dr^2} + \hat{V}\,\mathbf{u} = E\,\mathbf{u}")
-    st.markdown("Rearranged:")
-    st.latex(r"\frac{d^2\mathbf{u}}{dr^2} = \frac{2m_r}{\hbar^2}\bigl(\hat{V} - E\bigr)\,\mathbf{u}")
-    st.markdown("""
-#### 3a. K-matrix boundary matching (Tabs 1 & 2)
-
-Because V̂ is **uniform** inside Region I, the two dressed eigenmodes each oscillate or decay
-analytically (sin/cos for propagating, sinh/cosh for evanescent). The general interior solution is:
-
-$$\\mathbf{u}(r) = c_0\\,\\boldsymbol{\\xi}_0 f_0(r) + c_1\\,\\boldsymbol{\\xi}_1 f_1(r)$$
-
-where **ξ**ᵢ are the dressed eigenvectors and fᵢ(r) = sin(kᵢr) or sinh(κᵢr).
-The exterior solution (r > ā) is: open channel → sin(k_ext r − aδ) ≈ r − a for E → 0;
-closed channel → exp(−κ_ext r). Matching at r = ā gives the **2×2 K-matrix system**:
-
-$$M\\,\\mathbf{c} = \\begin{pmatrix}0\\\\1\\end{pmatrix}, \\quad
-M_{0i} = \\xi^{(c)}_i\\bigl[f_i'(\\bar{a}) + \\kappa_\\mathrm{ext}\\,f_i(\\bar{a})\\bigr],\\quad
-M_{1i} = \\xi^{(o)}_i\\,f_i'(\\bar{a})$$
-
-The scattering length follows from the open-channel amplitude at ā:
-""")
-    st.latex(r"a = \bar{a} - u_\mathrm{open}(\bar{a}), \quad \text{where } u'_\mathrm{open}(\bar{a}) = 1")
-    st.markdown("""
-Evanescent modes with κā > 500 are normalised as exp(κ(r − ā)) to prevent float64 overflow.
-
-#### 3b. LSODA ODE integration (Tab 4 — van der Waals)
-
-When the square-well is replaced by the full −C₆/r⁶ tail, the potential is no longer
-piecewise constant and analytic solutions are unavailable. The coupled ODE is integrated
-numerically from r_min (hard wall, u = 0) to r_max = 6ā using
-**scipy `solve_ivp` with method `LSODA`** (Livermore Solver for ODEs with Automatic
-Stiffness detection), which switches between Adams (non-stiff) and BDF (stiff) algorithms.
-This handles the stiffness ratio between the decaying closed channel (κ_ext ≈ nm⁻¹) and
-the slowly-varying open channel (k → 0 at E = 0) that would limit explicit methods such as RK45.
-The scattering length is extracted from the log-derivative at r_max:
-""")
-    st.latex(r"a = r_\mathrm{max} - \frac{u_\mathrm{open}(r_\mathrm{max})}{u'_\mathrm{open}(r_\mathrm{max})}")
-
-    # ── 4. Diagonalisation
-    st.markdown("### 4. Analytical Diagonalisation of V̂")
-    st.markdown("""
-Because V̂ is **uniform** inside Region I, it can be diagonalised exactly.
-Writing the traceless part with ΔV = (V_oo − V_cc)/2 and coupling W:
-""")
-    st.latex(r"R = \sqrt{\Delta V^2 + W^2}")
-    st.latex(r"\tan 2\theta = \frac{W}{\Delta V}")
-    st.markdown("The dressed (adiabatic) eigenvalues are:")
-    st.latex(r"\lambda_\pm = \frac{V_\mathrm{oo}+V_\mathrm{cc}}{2} \pm R")
-    st.markdown("The dressed eigenstates (mixing open and closed channels):")
-    st.latex(r"|{+}\rangle = \cos\theta\,|\mathrm{open}\rangle + \sin\theta\,|\mathrm{closed}\rangle")
-    st.latex(r"|{-}\rangle = -\sin\theta\,|\mathrm{open}\rangle + \cos\theta\,|\mathrm{closed}\rangle")
-    st.markdown("""
-Inside Region I the wavefunction propagates (or decays) in each dressed channel
-with wavenumber k± = √(2m_r(E − λ±))/ħ. A channel is **propagating** when E > λ±
-and **evanescent** when E < λ±.
-""")
-
-    st.markdown("#### Field dependence of θ: W is constant, δ(B) is not")
-    st.markdown("""
-A key point of the Lange et al. model: **W does not depend on B**.
-It is a single fitted constant per resonance, determined from the measured resonance width Γ:
-""")
-    st.latex(r"W \approx \sqrt{\frac{\hbar\Gamma \cdot \hbar^2/(2m_r)}{\bar{a}^2}}")
-    st.markdown("""
-What varies with field is the **detuning** δ(B) = δμ·μB·(B − Bc), which shifts the
-closed-channel threshold:
-""")
-    st.latex(r"V_\mathrm{cc}(B) = \delta\mu \cdot \mu_B \cdot (B - B_c)")
-    st.markdown(r"""
-So ΔV(B) = (V_oo − V_cc(B))/2 is B-dependent, and therefore the mixing angle:
-
-$$\theta(B) = \tfrac{1}{2}\arctan\!\left(\frac{W}{\Delta V(B)}\right)$$
-
-rotates continuously with field. Far from resonance (|ΔV| ≫ W) θ → 0° (channels nearly decoupled);
-at the bare-state crossing B = Bc (ΔV → 0) θ → 45° (maximum mixing);
-past resonance θ → 90°. The fit to experimental binding energies E_b(B) determines all five
-parameters per resonance: B0, B*, Bc, δμ, Γ.
-""")
-
-    # ── 5. Scattering length
-    st.markdown("### 5. Multi-Resonance Scattering Length  a(B)")
-    st.markdown("""
-Lange et al. fit the full coupled-channel calculation to a product formula over
-three Feshbach resonances (s-, d-, g-wave):
-""")
-    st.latex(r"a(B) = a_\mathrm{bg}\prod_{i}\frac{B - B^*_i}{B - B_{0,i}}")
-    st.markdown("""
-| Symbol | Meaning |
-|--------|---------|
-| a_bg = 1875 a₀ | background scattering length |
-| B0_i | pole of a(B) — resonance position |
-| B*_i | zero of a(B) — where open meets closed without coupling |
-
-The formula gives a(B) → ±∞ at each B0_i and a(B) = 0 at each B*_i.
-""")
-
-    # ── 6. Binding energy
-    st.markdown("### 6. Molecular Binding Energy  E_b(B)")
-    st.markdown("""
-Near threshold the bound-state energy is related to the scattering length via the
-**universal formula with effective-range correction** (r_eff ≈ ā):
-""")
-    st.latex(r"\kappa = \frac{1 - \sqrt{1 - 2\bar{a}/a}}{\bar{a}}")
-    st.latex(r"E_b = -\frac{\hbar^2\kappa^2}{2m_r}")
-    st.markdown("""
-This is valid when a > 2ā. For a ≤ 2ā the simple universal relation
-E_b = −ħ²/(2m_r a²) is used instead.
-The mean scattering length **ā = 95.7 a₀** sets the effective range scale.
-""")
-
-    # ── 7. Open-channel well depth from a_bg
-    st.markdown("### 7. Finding V_open from a_bg")
-    st.markdown("""
-The open-channel well depth V_open is fixed by requiring the **single-channel** square-well
-scattering length to equal a_bg:
-""")
-    st.latex(r"a_\mathrm{bg} = \bar{a}\left(1 - \frac{\tan(k\bar{a})}{k\bar{a}}\right), \quad k = \sqrt{\frac{2m_r V_\mathrm{open}}{\hbar^2}}")
-    st.markdown("""
-This equation has multiple branches (poles whenever k·ā = (n+½)π).
-The first pole occurs at:
-""")
-    st.latex(r"V_\mathrm{pole,1} = \frac{\pi^2}{8}\frac{\hbar^2}{m_r\bar{a}^2} \approx 15.1\;\mathrm{neV}")
-    st.markdown("""
-Since a_bg = 1875 a₀ ≫ ā, the well is near-resonant and V_open sits just above
-V_pole,1 in the first branch. The root is found numerically with `scipy.optimize.brentq`.
-""")
-
-    # ── 8. Assumptions
-    st.markdown("### 8. Key Assumptions")
-    st.markdown("""
-| Assumption | Consequence |
-|------------|-------------|
-| **Square-well potential** — V̂ is piecewise constant | Allows exact analytic diagonalisation inside Region I |
-| **Constant V̂ inside ā** | Wavefunction has sinusoidal/hyperbolic form; mixing angle θ is position-independent |
-| **s-wave dominance** | Only ℓ=0 partial wave contributes at ultracold temperatures (kT ≪ centrifugal barrier) |
-| **E ≈ 0 (threshold)** | Scattering length fully characterises low-energy cross section |
-| **Three independent resonances** | Product formula for a(B) treats s-, d-, g-wave poles as independent; cross-terms neglected |
-| **Effective range r_eff = ā** | Simplifies binding energy formula; valid near a broad resonance |
-| **Single detuning parameter per resonance** | Linear B-dependence of δ(B) = δμ·μB·(B − Bc) assumed |
-| **No three-body losses** | Model is purely two-body; ignores Efimov physics and inelastic processes |
-""")
-
-    st.markdown("### 9. Cs Parameters (Table I, Lange et al. 2009)")
-    st.markdown(f"""
-| Quantity | Value |
-|----------|-------|
-| ā (mean scattering length) | 95.7 a₀ = {a_bar_cs/a0_nm:.1f} a₀ |
-| a_bg (background scattering length) | 1875 a₀ |
-| m_r (reduced mass) | m_Cs/2 = {m_r_me:.0f} mₑ |
-| ħ²/(2m_r) | {hbar2_2mr*1e7:.4f} × 10⁻⁷ eV·nm² |
-| μB | 5.788 × 10⁻⁹ eV/G |
-
-**Resonance parameters:**
-
-| | B₀ (G) | B* (G) | Bc (G) | δμ (μB) | Γ/h (MHz) |
-|---|---|---|---|---|---|
-| s-wave | −11.1 | 18.1 | 19.7 | 2.50 | 11.6 |
-| d-wave | 47.78 | 47.944 | 47.962 | 1.15 | 0.065 |
-| g-wave | 53.449 | 53.457 | 53.458 | 1.50 | 0.0042 |
-""")
 
 @st.cache_data(show_spinner=False)
 def fit_W_vdw_to_pole(C6_eV_key, r_min_key, r_max_key):
@@ -1072,9 +868,9 @@ def fit_W_vdw_to_pole(C6_eV_key, r_min_key, r_max_key):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — van der Waals Extension
+# TAB 3 — van der Waals Extension
 # ═══════════════════════════════════════════════════════════════════════════════
-with tab4:
+with tab3:
     st.markdown("<h2 style='color:#00e5ff;'>van der Waals Extension</h2>",
                 unsafe_allow_html=True)
     st.markdown("""
@@ -1354,9 +1150,9 @@ W used = {_W_alpha_v * _W_gamma_v * 1e9:.2f} neV (α × W_Γ)<br>
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 5 — Verification
+# TAB 4 — Verification
 # ═══════════════════════════════════════════════════════════════════════════════
-with tab5:
+with tab4:
     st.markdown("<h2 style='color:#00e5ff;'>Verification</h2>", unsafe_allow_html=True)
     st.markdown("""
 <p style="color:#b0bec5;">
@@ -1772,7 +1568,7 @@ means something is wrong.
 """, unsafe_allow_html=True)
 
 # ── Tab 6: Three-Channel Spin Model ────────────────────────────────────────────
-with tab6:
+with tab5:
     st.markdown("<h2 style='color:#00e5ff;'>Three-channel toy spin model</h2>",
                 unsafe_allow_html=True)
     st.markdown(
